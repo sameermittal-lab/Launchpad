@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LaunchPad - AI Job Search Command Center</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">&#x2728;</div>
+    <div class="login-title">Welcome to LaunchPad</div>
+    <div class="login-subtitle">Your AI-powered job search command center</div>
+    <div class="login-profiles" id="loginProfiles">
+      <div style="text-align:center;padding:20px;color:var(--text3)">Loading profiles...</div>
+    </div>
+    <div class="login-divider">OR</div>
+    <button class="btn btn-ghost" style="width:100%;justify-content:center" onclick="showCreateProfile()">+ Create New Profile</button>
+  </div>
+</div>
+
+<!-- CREATE PROFILE MODAL -->
+<div class="modal-overlay" id="createProfileModal" onclick="if(event.target===this)closeCreateProfile()">
+  <div class="modal" style="width:520px;max-width:90vw">
+    <div class="modal-head">
+      <div class="modal-title">&#x2728; Create Your Profile</div>
+      <button class="dp-close" onclick="closeCreateProfile()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg">
+        <label class="fl">Your Name *</label>
+        <input class="fi" id="cp-name" placeholder="Jane Doe">
+      </div>
+      <div class="fg">
+        <label class="fl">Role Title</label>
+        <input class="fi" id="cp-role" placeholder="VP Product / Head of AI">
+      </div>
+      <div class="fg">
+        <label class="fl">Email</label>
+        <input class="fi" id="cp-email" type="email" placeholder="you@example.com">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="fg">
+          <label class="fl">Phone</label>
+          <input class="fi" id="cp-phone" placeholder="+1-555-555-5555">
+        </div>
+        <div class="fg">
+          <label class="fl">Location</label>
+          <input class="fi" id="cp-location" placeholder="Seattle, WA">
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl">LinkedIn</label>
+        <input class="fi" id="cp-linkedin" placeholder="linkedin.com/in/yourname">
+      </div>
+      <div class="fg">
+        <label class="fl">PIN (optional, 4-20 chars)</label>
+        <input class="fi" id="cp-pin" type="password" placeholder="Leave blank for no PIN">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeCreateProfile()">Cancel</button>
+      <button class="btn btn-primary" onclick="createProfile()">Create Profile</button>
+    </div>
+  </div>
+</div>
+
+<!-- SIDEBAR -->
+<div class="sidebar" id="sidebar" style="display:none">
+  <div class="sidebar-logo">
+    <div class="logo-icon">&#x2728;</div>
+    <div>
+      <div class="logo-text">LaunchPad</div>
+      <div class="logo-tag">Job Search AI</div>
+    </div>
+  </div>
+  
+  <div class="profile-switcher" onclick="showProfileSwitcher()">
+    <div class="profile-row">
+      <div class="profile-avatar" id="currentProfileAvatar">SM</div>
+      <div class="profile-info">
+        <div class="profile-name" id="currentProfileName">Your Name</div>
+        <div class="profile-role">VP Product / Head of AI</div>
+      </div>
+      <div class="chevron">&#x2B07;</div>
+    </div>
+  </div>
+
+  <div class="sidebar-nav">
+    <div class="nav-section">
+      <div class="nav-section-title">Pipeline</div>
+      <div class="nav-item active" data-page="dashboard"><span class="ni-emoji">&#x1F3E0;</span>Dashboard</div>
+      <div class="nav-item" data-page="pipeline"><span class="ni-emoji">&#x1F4CB;</span>Pipeline Board</div>
+      <div class="nav-item" data-page="listings"><span class="ni-emoji">&#x1F50D;</span>All Listings</div>
+      <div class="nav-item" data-page="passed"><span class="ni-emoji">&#x1F6AB;</span>Passed</div>
+      <div class="nav-item" data-page="history"><span class="ni-emoji">&#x1F4DC;</span>History</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-title">Discovery</div>
+      <div class="nav-item" data-page="scanner"><span class="ni-emoji">&#x1F4E1;</span>Portal Scanner</div>
+      <div class="nav-item" data-page="gmail"><span class="ni-emoji">&#x1F4E7;</span>Gmail Feed</div>
+      <div class="nav-item" data-page="reminders"><span class="ni-emoji">&#x1F514;</span>Follow-ups</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-title">Preparation</div>
+      <div class="nav-item" data-page="resume"><span class="ni-emoji">&#x1F4C4;</span>Resume Builder</div>
+      <div class="nav-item" data-page="cover"><span class="ni-emoji">&#x270D;</span>Cover Letters</div>
+      <div class="nav-item" data-page="interview"><span class="ni-emoji">&#x1F3A4;</span>Interview Prep</div>
+      <div class="nav-item" data-page="companies"><span class="ni-emoji">&#x1F3E2;</span>Company Research</div>
+      <div class="nav-item" data-page="negotiation"><span class="ni-emoji">&#x1F4B0;</span>Negotiation</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-title">System</div>
+      <div class="nav-item" data-page="settings"><span class="ni-emoji">&#x2699;</span>Settings</div>
+    </div>
+  </div>
+
+  <div class="sidebar-bottom">
+    <div class="cost-tracker" id="costTracker">
+      <div class="cost-label">💸 This Month</div>
+      <div class="cost-value">-</div>
+      <div class="cost-detail">Loading…</div>
+    </div>
+    <div id="schedulerStatus" style="margin-top:10px;padding:8px 12px;background:var(--bg2);border-radius:var(--radius-sm);font-size:10px;font-weight:600;display:flex;align-items:center;gap:6px;color:var(--text3)">
+      <span id="schedDot" style="width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>
+      <span id="schedText">Checking scheduler…</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="main" style="display:none">
+  <div class="topbar">
+    <button class="mobile-menu-btn" onclick="toggleSidebar()">&#x2630;</button>
+    <div class="topbar-search">
+      <span class="si">&#x1F50D;</span>
+      <input type="text" id="globalSearch" placeholder="Search listings by company, role, or keyword..." oninput="handleGlobalSearch(this.value)">
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" title="Notifications">&#x1F514;<span class="notif-dot"></span></button>
+      <button class="btn btn-ghost" onclick="runScan()">&#x1F50D; Scan Now</button>
+      <button class="btn btn-primary" onclick="showAddModal()">&#x2795; Add Listing</button>
+    </div>
+  </div>
+  <div class="content" id="content"></div>
+</div>
+
+<!-- DETAIL PANEL -->
+<div class="detail-overlay" id="detailOverlay" onclick="closeDetail()"></div>
+<div class="detail-panel" id="detailPanel">
+  <div class="dp-header">
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:1px" id="dp-company">Anthropic</div>
+      <div style="font-size:22px;font-weight:800;margin-top:4px;letter-spacing:-0.5px" id="dp-title">Senior AI Engineer</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px;font-weight:500" id="dp-location">San Francisco, CA &middot; Remote</div>
+    </div>
+    <button class="dp-close" onclick="closeDetail()">&times;</button>
+  </div>
+  <div class="dp-body">
+    <div class="dp-section">
+      <div class="score-hero">
+        <div class="score-hero-row">
+          <div>
+            <div class="score-big" id="dp-score">4.2</div>
+            <div class="score-label">out of 5.0</div>
+          </div>
+          <div class="grade-pill" id="dp-grade">Grade A</div>
+        </div>
+      </div>
+      <div class="score-grid">
+        <div class="score-item"><div class="score-item-label">Role Match</div><div class="score-item-value" style="color:var(--green)">4.5</div></div>
+        <div class="score-item"><div class="score-item-label">Skills</div><div class="score-item-value" style="color:var(--green)">4.3</div></div>
+        <div class="score-item"><div class="score-item-label">Comp</div><div class="score-item-value" style="color:#a16207">3.8</div></div>
+        <div class="score-item"><div class="score-item-label">Growth</div><div class="score-item-value" style="color:var(--green)">4.6</div></div>
+        <div class="score-item"><div class="score-item-label">Culture</div><div class="score-item-value" style="color:var(--green)">4.1</div></div>
+        <div class="score-item"><div class="score-item-label">Location</div><div class="score-item-value" style="color:var(--green)">4.5</div></div>
+      </div>
+    </div>
+    <div class="dp-section">
+      <div class="ai-summary">
+        <div class="ai-summary-label">&#x2728; AI Summary</div>
+        <div class="ai-summary-text">Strong match for your AI/ML background. The role requires RAG pipeline experience and LLM orchestration which aligns with your recent work at Amazon. Compensation is slightly below your target range but equity package is competitive. Team is small, mission-driven, and fast-growing.</div>
+      </div>
+    </div>
+    <div class="dp-section">
+      <div class="dp-section-title">&#x1F4C4; Tailored Assets</div>
+      <div class="asset-card" style="margin-bottom:8px">
+        <div class="asset-icon">&#x1F4C4;</div>
+        <div class="asset-info">
+          <div class="asset-name">cv-anthropic-2026-04-25.pdf</div>
+          <div class="asset-meta">Resume &middot; 92% keyword match &middot; 2 pages</div>
+        </div>
+        <div class="asset-actions">
+          <button class="btn btn-ghost btn-sm">Preview</button>
+          <button class="btn btn-primary btn-sm">&#x2B07;</button>
+        </div>
+      </div>
+      <div class="asset-card">
+        <div class="asset-icon" style="background:linear-gradient(135deg,#fce7f3,#fed7aa)">&#x270D;</div>
+        <div class="asset-info">
+          <div class="asset-name">cover-letter-anthropic.pdf</div>
+          <div class="asset-meta">Cover Letter &middot; Generated &middot; 1 page</div>
+        </div>
+        <div class="asset-actions">
+          <button class="btn btn-ghost btn-sm">Preview</button>
+          <button class="btn btn-primary btn-sm">&#x2B07;</button>
+        </div>
+      </div>
+    </div>
+    <div class="dp-section">
+      <div class="dp-section-title">&#x1F3A4; Interview Prep</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.7;font-weight:500">
+        <div style="margin-bottom:10px;padding:10px;background:var(--bg2);border-radius:var(--radius-sm)">
+          <strong style="color:var(--text)">&#x1F31F; STAR Story 1:</strong> RAG pipeline at scale &mdash; Built retrieval system processing 10M docs/day at Amazon
+        </div>
+        <div style="margin-bottom:10px;padding:10px;background:var(--bg2);border-radius:var(--radius-sm)">
+          <strong style="color:var(--text)">&#x1F31F; STAR Story 2:</strong> Cross-team AI adoption &mdash; Led org-wide GenAI integration for 200+ engineers
+        </div>
+        <div style="padding:10px;background:var(--bg2);border-radius:var(--radius-sm)">
+          <strong style="color:var(--text)">&#x2753; Key Questions:</strong> System design for LLM serving, evaluation frameworks, cost optimization
+        </div>
+      </div>
+    </div>
+    <div class="dp-section">
+      <div class="dp-section-title">&#x1F3E2; About Anthropic</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.7;font-weight:500">
+        AI safety company. ~800 employees. $15B valuation. Funded by Google, Spark Capital. Strong research culture, collaborative. Glassdoor: 4.6/5.
+      </div>
+    </div>
+  </div>
+  <div class="dp-actions">
+    <button class="btn btn-success" style="flex:1" onclick="alert('Starting Playwright submission...\n1. Navigate to job URL\n2. Fill form with your profile\n3. Upload tailored resume + cover letter\n4. Wait for Gmail verification code\n5. Submit application')">&#x2713; Approve &amp; Submit</button>
+    <button class="btn btn-ghost">&#x1F4C4;</button>
+    <button class="btn btn-danger">&#x2715;</button>
+  </div>
+</div>
+
+<!-- ADD MODAL -->
+<div class="modal-overlay" id="addModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">&#x2728; Add New Listing</div>
+      <button class="dp-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg">
+        <label class="fl">Job URL or Description</label>
+        <textarea class="fi" id="addListingInput" rows="5" placeholder="Paste a job URL (https://...) or the full job description here..."></textarea>
+      </div>
+      <div id="addListingStatus" style="font-size:12px;color:var(--text3);font-weight:500;margin-top:-4px">
+        &#x1F4A1; We'll auto-detect and run the full pipeline: fetch, extract, evaluate
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="addListingBtn" onclick="submitNewListing()">&#x2728; Run Pipeline</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="app.js"></script>
+<script src="js/listings.js"></script>
+</body>
+</html>

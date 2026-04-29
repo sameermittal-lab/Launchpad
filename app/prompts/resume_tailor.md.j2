@@ -1,0 +1,108 @@
+You are tailoring a candidate's resume for a specific job. Your goal is to maximize JD alignment WITHOUT inventing any experience, skills, or metrics.
+
+# Candidate's Base Resume
+
+{{ cv_text }}
+
+# Target Job
+
+Company: {{ listing.company }}
+Role: {{ listing.role_title }}
+{% if listing.location %}Location: {{ listing.location }}{% endif %}
+{% if listing.archetype %}Archetype: {{ listing.archetype }}{% endif %}
+
+## Job Description
+
+{{ listing.jd_text }}
+
+# Tailoring Intensity: {{ intensity | upper }}
+
+{% if intensity == "light" %}
+## Light mode rules
+- **Keep the resume's structure and voice unchanged.**
+- Only rewrite the Professional Summary to emphasize 2-3 JD-relevant themes.
+- Inject JD keywords into existing bullets **only where natural** - do not force awkward phrasing.
+- Select top 6-8 Core Competencies from the candidate's actual skills that match the JD.
+- Do **not** reorder, rewrite, or remove experience bullets. Preserve them exactly.
+- Do **not** remove projects or education sections.
+{% elif intensity == "heavy" %}
+## Heavy mode rules
+- Maximize keyword coverage and alignment with the JD.
+- Rewrite the summary from scratch, 3-4 punchy lines, keyword-dense.
+- Rewrite each bullet in JD language **but keep the underlying facts and metrics exactly**.
+- Reorder bullets within each role by JD relevance.
+- Cut less-relevant bullets entirely if they don't serve the JD.
+- Select top 3-4 projects most relevant to the JD; cut the rest.
+- Select 8-10 Core Competencies matching the JD.
+{% else %}
+## Medium mode rules (default)
+- Preserve the resume's structure and voice.
+- Rewrite the Professional Summary to be 3-4 lines, keyword-dense, emphasizing relevant themes.
+- Inject JD keywords naturally into existing bullets - reformulate phrasing but keep all facts.
+- Reorder bullets within each role so the most JD-relevant ones appear first.
+- Select top 6-8 Core Competencies from the candidate's skills matching the JD.
+- Select top 3-4 projects most relevant to the JD.
+- Do not invent experience, skills, or metrics.
+{% endif %}
+
+# Global Rules (all modes)
+
+1. **Never invent skills, experience, metrics, or achievements.**
+2. Preserve job titles, companies, and dates exactly.
+3. Preserve all metrics and numbers exactly (e.g., "40% latency reduction").
+4. Output must be valid markdown, using the exact section structure below.
+5. Output **ONLY the markdown** - no JSON, no code fences, no preamble, no "here is" language.
+
+# Required Output Format
+
+Use this exact structure (include only sections with content):
+
+```
+# {Full Name}
+
+{email} · {phone} · {location} · {linkedin} · {portfolio}
+
+## Professional Summary
+
+{3-4 lines}
+
+## Core Competencies
+
+- {Competency 1}
+- {Competency 2}
+- {Competency 3}
+
+## Work Experience
+
+### {Company} - {Role Title}
+**{Start Date - End Date}**
+
+- {bullet 1}
+- {bullet 2}
+
+### {Next Company} - {Next Role}
+**{Date range}**
+
+- {bullet}
+
+## Projects
+
+### {Project Name}
+{1-2 sentence description, JD-relevant}
+
+## Education
+
+### {Degree}, {Institution}
+{Year}
+
+## Certifications
+
+- {Cert 1} ({Year})
+
+## Skills
+
+**Technical:** {comma-separated tech}
+**Languages:** {languages}
+```
+
+Follow that structure exactly. No additional wrapper text. Markdown only.

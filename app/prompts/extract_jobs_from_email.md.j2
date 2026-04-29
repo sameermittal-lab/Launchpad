@@ -1,0 +1,64 @@
+You are processing an email (typically a LinkedIn alert, recruiter outreach, application update, or newsletter) for a specific job-seeking candidate. Do TWO things:
+
+1. Write a concise 1-sentence human-readable summary of what the email is actually about (for the UI)
+2. Extract distinct job opportunities mentioned — but ONLY ones that plausibly match this candidate's target roles
+
+{% if candidate_target_roles %}
+# Candidate context — filter extractions against this
+
+Target roles: {{ candidate_target_roles }}
+{% if candidate_current_role %}Current level / role: {{ candidate_current_role }}{% endif %}
+{% if positive_keywords %}Required keywords in title (at least one must appear): {{ positive_keywords|join(", ") }}{% endif %}
+{% if negative_keywords %}Forbidden keywords in title (title must NOT contain any of these): {{ negative_keywords|join(", ") }}{% endif %}
+
+Only include listings whose role title is **plausibly in this candidate's target set AND passes the positive/negative keyword filter above**. A Director at Amazon targeting "VP/Head of Product" roles should NOT have retail hourly jobs, junior IC roles, or roles whose title contains any forbidden keyword (e.g., "engineer" if listed above). These are noise even if LinkedIn bundled them into the same alert email.
+
+**Include** a listing if:
+- Title passes the keyword filter (no forbidden keyword present; at least one required keyword present if any are required), AND
+- The title matches or is a reasonable stretch for the candidate's target roles, AND
+- The seniority implied by the title is within ~1 level of the candidate's current level (up or down)
+
+**Skip** a listing if:
+- Title contains ANY forbidden keyword (e.g., "engineer" when candidate has it as negative — skip even if it says "Staff Software Engineer at $220K")
+- It's a different job family entirely (retail associate, warehouse, hourly shopper)
+- It's a junior role clearly below the candidate's level
+- It's a duplicate within this email
+
+Mention the count of skipped listings in the summary if you skipped any, so the user knows the filter worked.
+{% endif %}
+
+# Email
+
+From: {{ email.from_name }} <{{ email.from_email }}>
+Subject: {{ email.subject }}
+
+## Body
+
+{{ email.body_text }}
+
+# Output — JSON object (no prose, no markdown fences)
+
+{
+  "summary": "One sentence in natural language. Examples: '5 AI Engineer roles from LinkedIn at Anthropic, Cohere, and Stripe — all remote-friendly.' / 'LinkedIn alert for walmart: 3 Staff Software Engineer roles in Bentonville ($110-220K); skipped 2 retail-associate roles that don\\'t match your target.' / 'Sarah at Daversa about a Chief Product Officer role at a Series B AI infra company, $350-450K + equity.' / 'Greenhouse confirmed receipt of your Retool application submitted 2 days ago.' / 'Mother\\'s Day promotion from an unrelated retailer.'",
+  "listings": [
+    {
+      "company": "Company name",
+      "role_title": "Exact role title",
+      "url": "Full URL to the job posting (REQUIRED — if no URL, omit this listing)",
+      "location": "Location if mentioned, else null"
+    }
+  ]
+}
+
+# Rules
+
+- Always produce a non-empty `summary`. It's the headline the user reads in the inbox view.
+- Keep `summary` under 30 words. Plain English. No marketing fluff.
+- **The number you quote in the summary MUST MATCH the number of items in `listings`.** Don't say "4 relevant" if you only output 3 listings — count what you're actually emitting. If one of the candidates has no URL and you're dropping it, say "3 relevant; 1 had no URL".
+- When the filter removes listings, **mention the count** in the summary: e.g., "3 relevant roles; skipped 2 mismatched."
+- Every listing MUST have a URL. LinkedIn redirect URLs like `https://www.linkedin.com/comm/jobs/view/...?trk=...` are VALID — keep them as-is. The `trk=` tracking params will be stripped downstream.
+- Anchor text in the body is often followed by the URL in parentheses, e.g., "(USA) Staff, Software Engineer (https://www.linkedin.com/comm/...)". Pair them correctly.
+- Deduplicate — if the same (company, role_title) pair appears multiple times, include it once.
+- Don't invent URLs. If a role has no URL in the email body, skip it.
+- If there are no actual job opportunities (e.g., newsletter, promo, personal email), return `"listings": []` — the summary still applies.
+- Output ONLY the JSON object.

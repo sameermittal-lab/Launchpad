@@ -1,0 +1,24 @@
+You are extracting structured data from job listing text. The user pasted either a URL's content or raw JD text.
+
+# Input
+
+{{ jd_text }}
+
+# Task
+
+Extract the following fields. Respond with ONLY a JSON object (no code fences, no prose):
+
+{
+  "company": "Company name",
+  "role_title": "Exact role title as posted",
+  "location": "Primary location (city, state/country) or 'Remote'",
+  "job_type": "Remote | Hybrid | Onsite",
+  "salary_range": "Stated salary range or null if not mentioned",
+  "jd_text": "Clean job description text (strip navigation, footer, unrelated content)"
+}
+
+Rules:
+- If company or role is not clearly stated, do your best inference from context.
+- job_type must be exactly one of: "Remote", "Hybrid", "Onsite". Default to "Onsite" if unclear.
+- salary_range should preserve the format from the JD (e.g. "$180K-$250K", "EUR 90-120K").
+- jd_text should be the cleaned description, no more than 5000 chars. Keep responsibilities, requirements, qualifications, perks.

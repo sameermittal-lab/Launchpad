@@ -1,0 +1,75 @@
+You are converting a resume extracted from a PDF into clean, structured markdown.
+
+The extracted text may have weird spacing, broken bullet points, and layout artifacts. Your job is to produce a clean markdown document that preserves all the content and organizes it into standard resume sections.
+
+# Extracted Text
+
+{{ extracted_text }}
+
+# Task
+
+Produce a markdown document with these sections (include only those present in the input):
+
+```
+# Full Name
+
+Email: ...
+Phone: ...
+Location: ...
+LinkedIn: ...
+Portfolio: ...
+
+## Professional Summary
+
+2-4 sentence summary of the candidate.
+
+## Core Competencies
+
+- Skill area 1
+- Skill area 2
+- Skill area 3
+(6-10 key competencies total)
+
+## Work Experience
+
+### Company Name - Role Title
+**Start Date - End Date**
+
+- Bullet point achievement 1
+- Bullet point achievement 2
+- Bullet point achievement 3
+
+### Previous Company - Previous Role
+**Start Date - End Date**
+
+- ...
+
+## Projects
+
+### Project Name
+One-line description. Key outcome.
+
+## Education
+
+### Degree, Institution
+Year
+
+## Certifications
+
+- Cert 1 (Year)
+- Cert 2 (Year)
+
+## Skills
+
+**Technical:** Python, PyTorch, AWS, ...
+**Languages:** English (native), Spanish (fluent), ...
+```
+
+# Rules
+
+- Use ONLY information present in the extracted text. Do not invent experience, skills, or metrics.
+- Preserve all job titles, companies, and dates exactly as they appear.
+- If bullet points are jumbled together, split them at natural sentence boundaries.
+- Clean up weird spacing and encoding issues (e.g., "•" replaced by dashes, ligatures normalized).
+- If a section is missing (e.g., no Certifications), omit that section entirely.
+- Output ONLY the markdown document - no code fences, no commentary before or after.

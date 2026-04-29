@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Alert Setup Wizard — LaunchPad mockup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root{
+      --bg0:#f7f7f8; --bg1:#ffffff; --bg2:#f1f2f4;
+      --text1:#1c1d20; --text2:#51555e; --text3:#8a8f99;
+      --border:#e5e7eb; --primary:#2754ef; --primary-soft:#eaf0ff;
+      --green:#16a34a; --amber:#d97706; --indeed:#2164f3; --linkedin:#0a66c2;
+      --radius:14px; --radius-sm:8px; --shadow-sm:0 1px 3px rgba(0,0,0,.04), 0 0 0 1px rgba(0,0,0,.03);
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:var(--bg0);color:var(--text1);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+    .frame{max-width:1000px;margin:32px auto;background:var(--bg1);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden}
+    .frame-head{padding:18px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+    .frame-head .crumbs{color:var(--text3);font-size:13px}
+    .frame-head h1{margin:2px 0 0;font-size:20px;font-weight:700}
+    .frame-body{padding:24px}
+    .steps{display:flex;gap:12px;margin-bottom:24px}
+    .step{flex:1;padding:10px 14px;border-radius:var(--radius-sm);background:var(--bg2);color:var(--text2);font-size:12px;font-weight:600;display:flex;gap:8px;align-items:center;border:1px solid transparent}
+    .step.active{background:var(--primary-soft);color:var(--primary);border-color:rgba(39,84,239,.2)}
+    .step.done{color:var(--green)}
+    .step .n{width:20px;height:20px;border-radius:50%;background:var(--bg1);border:1px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--text2)}
+    .step.active .n{background:var(--primary);color:white;border-color:var(--primary)}
+    .step.done .n{background:var(--green);color:white;border-color:var(--green)}
+    .panel{display:none}
+    .panel.active{display:block}
+    h2{font-size:17px;margin:0 0 8px;font-weight:700}
+    p.lede{color:var(--text2);margin:0 0 18px}
+    .field{margin-bottom:14px}
+    .field label{display:block;font-size:12px;font-weight:600;margin-bottom:4px;color:var(--text2);letter-spacing:.02em;text-transform:uppercase}
+    .fi, textarea, select{width:100%;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg1);font-size:14px;font-family:inherit;color:var(--text1)}
+    .fi:focus, textarea:focus, select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(39,84,239,.12)}
+    textarea{resize:vertical;min-height:64px}
+    .pill-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+    .pill{padding:5px 10px;border-radius:999px;background:var(--bg2);border:1px solid var(--border);color:var(--text2);font-size:12px;cursor:pointer}
+    .pill.on{background:var(--primary);color:white;border-color:var(--primary)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .cards{display:flex;flex-direction:column;gap:10px}
+    .alert-card{border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px 16px;background:var(--bg1);display:grid;grid-template-columns:32px 1fr auto;gap:14px;align-items:start}
+    .alert-card.gone{opacity:.45}
+    .alert-card .plat{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--indeed);padding:3px 6px;background:rgba(33,100,243,.08);border-radius:4px;display:inline-block;margin-right:6px}
+    .alert-card .plat.linkedin{color:var(--linkedin);background:rgba(10,102,194,.08)}
+    .alert-card .title{font-weight:600;font-size:14px}
+    .alert-card .meta{font-size:12px;color:var(--text2);margin-top:3px}
+    .alert-card .buttons{display:flex;gap:6px;align-items:center}
+    .alert-card .icon{width:32px;height:32px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:16px}
+    .btn{padding:8px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg1);cursor:pointer;font-size:13px;font-weight:600;color:var(--text1);font-family:inherit}
+    .btn:hover{background:var(--bg2)}
+    .btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+    .btn-primary:hover{filter:brightness(0.95);background:var(--primary)}
+    .btn-sm{padding:5px 10px;font-size:12px}
+    .btn-ghost{background:transparent;border-color:transparent}
+    .btn-link{color:var(--primary);background:transparent;border:none;cursor:pointer;text-decoration:underline;font-size:12px;padding:2px}
+    .status-pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px}
+    .status-pill.queued{background:var(--bg2);color:var(--text2)}
+    .status-pill.opened{background:#fef3c7;color:#92400e}
+    .status-pill.confirmed{background:#dcfce7;color:#15803d}
+    .nav{display:flex;justify-content:space-between;margin-top:24px;padding-top:18px;border-top:1px solid var(--border)}
+    .notice{padding:12px 14px;border-radius:var(--radius-sm);background:var(--bg2);color:var(--text2);font-size:13px;margin:14px 0}
+    .notice strong{color:var(--text1)}
+    .kbd{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;background:var(--bg2);padding:1px 6px;border-radius:4px}
+    .step-5-summary{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+    .summary-card{background:var(--bg2);padding:16px;border-radius:var(--radius-sm);text-align:center}
+    .summary-card .big{font-size:28px;font-weight:700;color:var(--primary);display:block;margin-bottom:4px}
+    .summary-card .lbl{font-size:12px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+    details{margin-top:10px;padding:10px 14px;background:var(--bg2);border-radius:var(--radius-sm);font-size:13px}
+    details summary{cursor:pointer;color:var(--primary);font-weight:600}
+    details[open] summary{margin-bottom:8px}
+    code.url{font-family:'SF Mono',Menlo,Consolas,monospace;font-size:12px;word-break:break-all;color:var(--text2);display:block;padding:8px;background:var(--bg1);border-radius:4px;margin-top:6px;border:1px solid var(--border)}
+  </style>
+</head>
+<body>
+
+<div class="frame">
+  <div class="frame-head">
+    <div>
+      <div class="crumbs">Settings › Portal Scanner</div>
+      <h1>📮 Alert Setup Wizard</h1>
+    </div>
+    <button class="btn btn-ghost btn-sm" onclick="alert('Would exit back to Scanner settings')">✕ Close</button>
+  </div>
+
+  <div class="frame-body">
+
+    <div class="steps">
+      <div class="step active" id="s1"><span class="n">1</span>Criteria</div>
+      <div class="step" id="s2"><span class="n">2</span>Preview alerts</div>
+      <div class="step" id="s3"><span class="n">3</span>Register</div>
+      <div class="step" id="s4"><span class="n">4</span>Confirm inbox</div>
+      <div class="step" id="s5"><span class="n">5</span>Done</div>
+    </div>
+
+    <!-- PANEL 1: Criteria (pre-filled from profile) -->
+    <div class="panel active" data-panel="1">
+      <h2>What do you want to hear about?</h2>
+      <p class="lede">Pre-filled from your profile. Tweak anything here before LaunchPad generates alert searches. You can add or remove alerts before we send you to register.</p>
+
+      <div class="row">
+        <div class="field">
+          <label>Target roles</label>
+          <textarea id="targetRoles">Principal Product Manager (AI infra)
+Director of Product (developer tools)
+Staff Product Manager (ML platform)</textarea>
+        </div>
+        <div class="field">
+          <label>Locations</label>
+          <textarea id="locations">Seattle, WA
+Remote (US)
+San Francisco Bay Area</textarea>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Must include keywords <span style="color:var(--text3);font-weight:400;text-transform:none">(optional — OR within alert)</span></label>
+        <div class="pill-row">
+          <span class="pill on">AI infrastructure</span>
+          <span class="pill on">developer tools</span>
+          <span class="pill on">ML platform</span>
+          <span class="pill">LLM</span>
+          <span class="pill">RAG</span>
+          <span class="pill">vector database</span>
+          <span class="pill" style="color:var(--primary);cursor:pointer">+ Add</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Exclude keywords</label>
+        <div class="pill-row">
+          <span class="pill on">senior (as top level)</span>
+          <span class="pill on">associate</span>
+          <span class="pill on">entry-level</span>
+          <span class="pill on">internship</span>
+          <span class="pill" style="color:var(--primary);cursor:pointer">+ Add</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Where to register alerts</label>
+        <div class="pill-row">
+          <span class="pill on">📘 Indeed</span>
+          <span class="pill on">💼 LinkedIn</span>
+          <span class="pill" style="opacity:.5">✉️ Google for Jobs (coming soon)</span>
+        </div>
+      </div>
+
+      <div class="notice">
+        <strong>How this works:</strong> LaunchPad builds 3-6 tailored search URLs from your criteria above. We'll open each one in your browser, where you're already logged in — then all you do is click <span class="kbd">Save</span> or <span class="kbd">Set alert</span>. Your Gmail account is already connected, so the alert emails flow straight into LaunchPad's extractor.
+      </div>
+
+      <div class="nav">
+        <span></span>
+        <button class="btn btn-primary" onclick="goto(2)">Next: generate alerts →</button>
+      </div>
+    </div>
+
+    <!-- PANEL 2: Preview generated alerts -->
+    <div class="panel" data-panel="2">
+      <h2>LaunchPad generated 5 alerts from your criteria</h2>
+      <p class="lede">Each row corresponds to one alert LaunchPad will have you register. Toggle off anything you don't want, or click "Edit" to tweak the search. Click a URL to preview exactly what the search page will look like.</p>
+
+      <div class="cards">
+        <div class="alert-card">
+          <div class="icon">📘</div>
+          <div>
+            <div><span class="plat">Indeed</span><span class="title">Principal PM · AI infrastructure · Seattle or Remote</span></div>
+            <div class="meta">Keywords: "principal product manager" AI infrastructure · Location: Seattle, WA or Remote · Posted in last 7 days</div>
+            <details><summary>Show URL</summary>
+              <code class="url">https://www.indeed.com/jobs?q=%22principal+product+manager%22+AI+infrastructure&l=Seattle%2C+WA&fromage=7&sc=0kf%3Aexplvl%28SENIOR_LEVEL%29%3B</code>
+            </details>
+          </div>
+          <div class="buttons">
+            <button class="btn btn-sm">Edit</button>
+            <button class="btn btn-sm btn-ghost" onclick="this.closest('.alert-card').classList.toggle('gone')">Remove</button>
+          </div>
+        </div>
+
+        <div class="alert-card">
+          <div class="icon">📘</div>
+          <div>
+            <div><span class="plat">Indeed</span><span class="title">Director of Product · Developer tools</span></div>
+            <div class="meta">Keywords: "director of product" developer tools · Location: Bay Area · Remote also allowed</div>
+            <details><summary>Show URL</summary>
+              <code class="url">https://www.indeed.com/jobs?q=%22director+of+product%22+%22developer+tools%22&l=San+Francisco+Bay+Area&fromage=7</code>
+            </details>
+          </div>
+          <div class="buttons">
+            <button class="btn btn-sm">Edit</button>
+            <button class="btn btn-sm btn-ghost" onclick="this.closest('.alert-card').classList.toggle('gone')">Remove</button>
+          </div>
+        </div>
+
+        <div class="alert-card">
+          <div class="icon">📘</div>
+          <div>
+            <div><span class="plat">Indeed</span><span class="title">Staff PM · ML platform</span></div>
+            <div class="meta">Keywords: "staff product manager" ML platform · Remote (US) · Posted in last 7 days</div>
+            <details><summary>Show URL</summary>
+              <code class="url">https://www.indeed.com/jobs?q=%22staff+product+manager%22+ML+platform&l=Remote&fromage=7</code>
+            </details>
+          </div>
+          <div class="buttons">
+            <button class="btn btn-sm">Edit</button>
+            <button class="btn btn-sm btn-ghost" onclick="this.closest('.alert-card').classList.toggle('gone')">Remove</button>
+          </div>
+        </div>
+
+        <div class="alert-card">
+          <div class="icon">💼</div>
+          <div>
+            <div><span class="plat linkedin">LinkedIn</span><span class="title">Principal PM · AI infra · Seattle + Remote</span></div>
+            <div class="meta">Keywords: Principal Product Manager AI infrastructure · Seattle, WA · Remote allowed · Past week</div>
+            <details><summary>Show URL</summary>
+              <code class="url">https://www.linkedin.com/jobs/search/?keywords=Principal%20Product%20Manager%20AI%20infrastructure&location=Seattle%2C%20Washington&f_TPR=r604800&f_E=5%2C6&f_WT=2</code>
+            </details>
+          </div>
+          <div class="buttons">
+            <button class="btn btn-sm">Edit</button>
+            <button class="btn btn-sm btn-ghost" onclick="this.closest('.alert-card').classList.toggle('gone')">Remove</button>
+          </div>
+        </div>
+
+        <div class="alert-card">
+          <div class="icon">💼</div>
+          <div>
+            <div><span class="plat linkedin">LinkedIn</span><span class="title">Director Product · Dev tools · Bay Area</span></div>
+            <div class="meta">Keywords: Director Product developer tools · San Francisco Bay Area · Past 24 hours</div>
+            <details><summary>Show URL</summary>
+              <code class="url">https://www.linkedin.com/jobs/search/?keywords=Director%20Product%20developer%20tools&location=San%20Francisco%20Bay%20Area&f_TPR=r86400&f_E=6%2C7</code>
+            </details>
+          </div>
+          <div class="buttons">
+            <button class="btn btn-sm">Edit</button>
+            <button class="btn btn-sm btn-ghost" onclick="this.closest('.alert-card').classList.toggle('gone')">Remove</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn btn-link" style="margin-top:8px" onclick="alert('Would regenerate with your criteria')">↻ Regenerate suggestions</button>
+
+      <div class="nav">
+        <button class="btn" onclick="goto(1)">← Back</button>
+        <button class="btn btn-primary" onclick="goto(3)">Next: register in browser →</button>
+      </div>
+    </div>
+
+    <!-- PANEL 3: Register -->
+    <div class="panel" data-panel="3">
+      <h2>Register your alerts, one click at a time</h2>
+      <p class="lede">For each row, click <strong>Open search</strong>. You'll land on the exact pre-filtered results page on Indeed or LinkedIn. Hit <span class="kbd">Save alert</span> or the equivalent bell icon, then come back here and mark it done. You stay logged in the whole time — we never see your password.</p>
+
+      <div class="cards">
+        <div class="alert-card" id="a1">
+          <div class="icon">📘</div>
+          <div>
+            <div><span class="plat">Indeed</span><span class="title">Principal PM · AI infrastructure · Seattle or Remote</span></div>
+            <div class="meta">On Indeed: click the bell 🔔 at the top of the results page and choose "Daily" or "Weekly"</div>
+          </div>
+          <div class="buttons">
+            <span id="status-a1" class="status-pill queued">Not started</span>
+            <button class="btn btn-primary btn-sm" onclick="openAndMark('a1', 'https://www.indeed.com/jobs?q=%22principal+product+manager%22+AI+infrastructure&l=Seattle%2C+WA&fromage=7')">↗ Open search</button>
+            <button class="btn btn-sm" onclick="markDone('a1')">✓ Done</button>
+          </div>
+        </div>
+
+        <div class="alert-card" id="a2">
+          <div class="icon">📘</div>
+          <div>
+            <div><span class="plat">Indeed</span><span class="title">Director of Product · Developer tools</span></div>
+            <div class="meta">On Indeed: click the bell 🔔 at the top of the results page and choose "Daily" or "Weekly"</div>
+          </div>
+          <div class="buttons">
+            <span id="status-a2" class="status-pill queued">Not started</span>
+            <button class="btn btn-primary btn-sm" onclick="openAndMark('a2', 'https://www.indeed.com/jobs?q=%22director+of+product%22+%22developer+tools%22&l=San+Francisco+Bay+Area&fromage=7')">↗ Open search</button>
+            <button class="btn btn-sm" onclick="markDone('a2')">✓ Done</button>
+          </div>
+        </div>
+
+        <div class="alert-card" id="a3">
+          <div class="icon">📘</div>
+          <div>
+            <div><span class="plat">Indeed</span><span class="title">Staff PM · ML platform</span></div>
+            <div class="meta">On Indeed: click the bell 🔔 at the top of the results page and choose "Daily" or "Weekly"</div>
+          </div>
+          <div class="buttons">
+            <span id="status-a3" class="status-pill queued">Not started</span>
+            <button class="btn btn-primary btn-sm" onclick="openAndMark('a3', 'https://www.indeed.com/jobs?q=%22staff+product+manager%22+ML+platform&l=Remote&fromage=7')">↗ Open search</button>
+            <button class="btn btn-sm" onclick="markDone('a3')">✓ Done</button>
+          </div>
+        </div>
+
+        <div class="alert-card" id="a4">
+          <div class="icon">💼</div>
+          <div>
+            <div><span class="plat linkedin">LinkedIn</span><span class="title">Principal PM · AI infra · Seattle + Remote</span></div>
+            <div class="meta">On LinkedIn: click the green bell above the job list and set frequency to "Daily" — LinkedIn sends the alert to the email on your LinkedIn account</div>
+          </div>
+          <div class="buttons">
+            <span id="status-a4" class="status-pill queued">Not started</span>
+            <button class="btn btn-primary btn-sm" onclick="openAndMark('a4', 'https://www.linkedin.com/jobs/search/?keywords=Principal%20Product%20Manager%20AI%20infrastructure&location=Seattle%2C%20Washington&f_TPR=r604800')">↗ Open search</button>
+            <button class="btn btn-sm" onclick="markDone('a4')">✓ Done</button>
+          </div>
+        </div>
+
+        <div class="alert-card" id="a5">
+          <div class="icon">💼</div>
+          <div>
+            <div><span class="plat linkedin">LinkedIn</span><span class="title">Director Product · Dev tools · Bay Area</span></div>
+            <div class="meta">On LinkedIn: click the green bell above the job list and set frequency to "Daily"</div>
+          </div>
+          <div class="buttons">
+            <span id="status-a5" class="status-pill queued">Not started</span>
+            <button class="btn btn-primary btn-sm" onclick="openAndMark('a5', 'https://www.linkedin.com/jobs/search/?keywords=Director%20Product%20developer%20tools&location=San%20Francisco%20Bay%20Area&f_TPR=r86400')">↗ Open search</button>
+            <button class="btn btn-sm" onclick="markDone('a5')">✓ Done</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="notice" style="margin-top:16px">
+        <strong>Tip:</strong> If the same alert email address is already connected to LaunchPad (Gmail Feed), you don't need to do anything else. Otherwise, go to Gmail Feed and connect the account receiving these alerts.
+      </div>
+
+      <div class="nav">
+        <button class="btn" onclick="goto(2)">← Back</button>
+        <button class="btn btn-primary" onclick="goto(4)">Next: confirm inbox →</button>
+      </div>
+    </div>
+
+    <!-- PANEL 4: Confirm inbox -->
+    <div class="panel" data-panel="4">
+      <h2>Make sure alerts land in a Gmail account LaunchPad watches</h2>
+      <p class="lede">Indeed and LinkedIn send alerts to whatever email is on your account there. LaunchPad auto-extracts listings from any Gmail inbox you've connected.</p>
+
+      <div class="notice" style="background:#dcfce7;color:#166534">
+        ✓ Gmail account <strong>yourname@gmail.com</strong> is connected and actively syncing. Alerts sent here will be processed automatically.
+      </div>
+
+      <div class="notice">
+        ℹ️ If LinkedIn sends alerts to your personal LinkedIn email (<strong>yourname.personal@gmail.com</strong>) that's <em>not</em> connected, go to <strong>Gmail Feed → Connect account</strong>. Or change your LinkedIn notification email to one that's already watched.
+      </div>
+
+      <details>
+        <summary>Advanced: set sender filters in Gmail</summary>
+        <p style="color:var(--text2);margin:8px 0">
+          If you want extra signal about alert emails, create a Gmail filter:
+          <br>From: <span class="kbd">alert@indeed.com</span> OR <span class="kbd">jobs-listings@linkedin.com</span>
+          <br>Apply label: <span class="kbd">LaunchPad / Job Alerts</span>
+          <br>
+          <br>LaunchPad will still extract listings either way — this just helps you see them at a glance.
+        </p>
+      </details>
+
+      <div class="nav">
+        <button class="btn" onclick="goto(3)">← Back</button>
+        <button class="btn btn-primary" onclick="goto(5)">I'm all set →</button>
+      </div>
+    </div>
+
+    <!-- PANEL 5: Done summary -->
+    <div class="panel" data-panel="5">
+      <h2>✅ You're wired up</h2>
+      <p class="lede">LaunchPad now has a funnel from Indeed + LinkedIn → Gmail → Pipeline. Keep an eye on the Gmail Feed page for the first batch — it usually takes a day for the first alerts to land.</p>
+
+      <div class="step-5-summary">
+        <div class="summary-card"><span class="big">5</span><span class="lbl">Alerts registered</span></div>
+        <div class="summary-card"><span class="big">1</span><span class="lbl">Gmail account watching</span></div>
+      </div>
+
+      <div class="notice">
+        <strong>What happens next:</strong>
+        <ul style="margin:6px 0 0;padding-left:20px;color:var(--text2)">
+          <li>Indeed sends a daily digest around 7am local time</li>
+          <li>LinkedIn sends the first alert within 24 hours of saving</li>
+          <li>Each digest usually contains 5-20 roles after LinkedIn's filter, 10-40 from Indeed</li>
+          <li>LaunchPad auto-extracts each listing and evaluates the top matches</li>
+          <li>You'll see them on your <strong>Pipeline</strong> board under "Evaluated"</li>
+        </ul>
+      </div>
+
+      <div class="notice" style="background:#fef9c3;color:#713f12">
+        <strong>Heads-up:</strong> alerts expire if you don't engage with the emails. If you start ignoring them, Indeed/LinkedIn will stop sending. Come back to this wizard once a month to refresh or tune criteria.
+      </div>
+
+      <div class="nav">
+        <button class="btn" onclick="goto(1); resetAllStatus()">Register more alerts</button>
+        <button class="btn btn-primary" onclick="alert('Would return to Scanner settings')">Done — back to Scanner</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  function goto(n){
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    document.querySelector(`.panel[data-panel="${n}"]`).classList.add('active');
+    // step pills
+    for(let i=1;i<=5;i++){
+      const s=document.getElementById('s'+i);
+      s.classList.remove('active','done');
+      if(i<n) s.classList.add('done');
+      if(i===n) s.classList.add('active');
+    }
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  function openAndMark(id, url){
+    const pill = document.getElementById('status-'+id);
+    pill.textContent = 'Opened — waiting';
+    pill.classList.remove('queued','confirmed');
+    pill.classList.add('opened');
+    window.open(url, '_blank');
+  }
+  function markDone(id){
+    const pill = document.getElementById('status-'+id);
+    pill.textContent = '✓ Registered';
+    pill.classList.remove('queued','opened');
+    pill.classList.add('confirmed');
+  }
+  function resetAllStatus(){
+    document.querySelectorAll('.status-pill').forEach(p=>{
+      p.textContent='Not started';
+      p.classList.remove('opened','confirmed');
+      p.classList.add('queued');
+    });
+    document.querySelectorAll('.alert-card').forEach(c=>c.classList.remove('gone'));
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+You are writing a cover letter for a specific job. Keep it authentic, specific, and concise.
+
+# Candidate's Resume
+
+{{ cv_text }}
+
+# Target Job
+
+Company: {{ listing.company }}
+Role: {{ listing.role_title }}
+
+## Job Description
+
+{{ listing.jd_text }}
+
+# Requirements
+
+- Tone: **{{ tone }}**
+- Length: 3-4 short paragraphs (~220 words total)
+- Reference 2-3 specific things from the JD (technologies, responsibilities, company mission)
+- Weave in 2-3 real highlights from the candidate's resume - do not invent anything
+- No filler like "I am writing to express my interest"
+- No bullet lists - prose only
+- End with a confident, non-pushy close
+
+# Output Format
+
+Output ONLY markdown, no JSON, no code fences. Use this exact structure:
+
+```
+Dear {{ listing.company }} Hiring Team,
+
+{Opening paragraph - hook that names the role and connects to recent work.}
+
+{Second paragraph - 2-3 specific achievements matching JD requirements.}
+
+{Third paragraph - why this specific company/mission resonates.}
+
+{Fourth paragraph - confident close with availability signal.}
+
+Best regards,
+{Full Name}
+```
+
+Replace the placeholders with actual content. Output the markdown body only, no commentary.

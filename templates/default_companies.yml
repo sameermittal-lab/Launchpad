@@ -1,0 +1,86 @@
+# Pre-loaded list of AI/ML companies to track. Users can customize via the Portal Scanner page.
+# Format: name, careers_url, optional api_url
+companies:
+  # AI Labs
+  - name: Anthropic
+    careers_url: https://job-boards.greenhouse.io/anthropic
+    platform: greenhouse
+  - name: OpenAI
+    careers_url: https://openai.com/careers
+    platform: custom
+  - name: Cohere
+    careers_url: https://jobs.ashbyhq.com/cohere
+    platform: ashby
+  - name: Mistral AI
+    careers_url: https://jobs.lever.co/mistral
+    platform: lever
+  - name: DeepL
+    careers_url: https://jobs.ashbyhq.com/DeepL
+    platform: ashby
+
+  # AI Platforms / DevTools
+  - name: LangChain
+    careers_url: https://jobs.ashbyhq.com/langchain
+    platform: ashby
+  - name: Pinecone
+    careers_url: https://jobs.ashbyhq.com/pinecone
+    platform: ashby
+  - name: Weights & Biases
+    careers_url: https://jobs.lever.co/wandb
+    platform: lever
+  - name: Vercel
+    careers_url: https://job-boards.greenhouse.io/vercel
+    platform: greenhouse
+  - name: Retool
+    careers_url: https://retool.com/careers
+    platform: custom
+  - name: Arize AI
+    careers_url: https://job-boards.greenhouse.io/arizeai
+    platform: greenhouse
+  - name: Glean
+    careers_url: https://job-boards.greenhouse.io/gleanwork
+    platform: greenhouse
+  - name: Runway
+    careers_url: https://job-boards.greenhouse.io/runwayml
+    platform: greenhouse
+  - name: Perplexity
+    careers_url: https://jobs.ashbyhq.com/perplexity
+    platform: ashby
+
+  # Voice AI
+  - name: ElevenLabs
+    careers_url: https://jobs.ashbyhq.com/elevenlabs
+    platform: ashby
+  - name: Deepgram
+    careers_url: https://jobs.ashbyhq.com/deepgram
+    platform: ashby
+  - name: PolyAI
+    careers_url: https://job-boards.eu.greenhouse.io/polyai
+    platform: greenhouse
+  - name: Parloa
+    careers_url: https://job-boards.eu.greenhouse.io/parloa
+    platform: greenhouse
+
+  # Contact Center / Enterprise AI
+  - name: Sierra
+    careers_url: https://jobs.ashbyhq.com/sierra
+    platform: ashby
+  - name: Decagon
+    careers_url: https://jobs.ashbyhq.com/decagon
+    platform: ashby
+
+  # Automation
+  - name: n8n
+    careers_url: https://jobs.ashbyhq.com/n8n
+    platform: ashby
+  - name: Zapier
+    careers_url: https://jobs.ashbyhq.com/zapier
+    platform: ashby
+
+  # Enterprise / General
+  - name: Palantir
+    careers_url: https://jobs.lever.co/palantir
+    platform: lever
+  - name: Spotify
+    careers_url: https://jobs.lever.co/spotify
+    platform: lever

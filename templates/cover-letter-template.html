@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<title>{{ name }} - Cover Letter - {{ company }}</title>
+<style>
+@page { size: {{ page_width }} {{ page_height }}; margin: 0.75in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'DM Sans', -apple-system, sans-serif;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #222;
+  background: #fff;
+}
+.header { margin-bottom: 20px; }
+.name {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+  color: #111;
+}
+.accent-line {
+  height: 2px;
+  background: linear-gradient(to right, hsl(187, 74%, 32%), hsl(270, 70%, 45%));
+  margin-bottom: 8px;
+}
+.contact-row {
+  font-size: 10px;
+  color: #555;
+}
+.date {
+  font-size: 11px;
+  color: #555;
+  margin: 18px 0 14px;
+}
+p {
+  margin-bottom: 12px;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+.body-block {
+  white-space: pre-wrap;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="name">{{ name }}</div>
+    <div class="accent-line"></div>
+    <div class="contact-row">
+      {% if email %}{{ email }}{% endif %}
+      {% if phone %} · {{ phone }}{% endif %}
+      {% if linkedin %} · {{ linkedin }}{% endif %}
+    </div>
+  </div>
+  <div class="date">{{ date }}</div>
+  <div class="body-block">{{ body_text }}</div>
+</body>
+</html>

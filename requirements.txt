@@ -1,0 +1,47 @@
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.12
+
+# Database
+sqlalchemy==2.0.35
+alembic==1.13.3
+
+# LLM providers
+anthropic==0.36.0
+openai==2.32.0
+google-generativeai==0.8.3
+
+# Gmail
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+google-api-python-client==2.147.0
+
+# Browser automation
+playwright==1.47.0
+
+# PDF extraction
+pdfplumber==0.11.4
+pymupdf==1.24.11
+
+# Templates and rendering
+jinja2==3.1.4
+markdown==3.7
+
+# HTTP client
+httpx==0.27.2
+trafilatura==1.12.2
+
+# Security
+cryptography==43.0.1
+bcrypt==4.2.0
+
+# Scheduler
+apscheduler==3.10.4
+
+# Utilities
+qrcode[pil]==8.0
+pyyaml==6.0.2
+python-dotenv==1.0.1
+pydantic==2.9.2
+pydantic-settings==2.5.2

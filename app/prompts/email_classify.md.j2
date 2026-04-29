@@ -1,0 +1,34 @@
+You are classifying emails to help a job seeker manage their inbox.
+
+# Input Emails
+
+{% for email in emails %}
+---
+Email #{{ loop.index }}
+From: {{ email.from_name }} <{{ email.from_email }}>
+Subject: {{ email.subject }}
+Snippet: {{ email.snippet }}
+{% endfor %}
+
+# Task
+
+For each email, classify into exactly ONE of:
+- `linkedin_alert` - LinkedIn job match notifications (e.g., "20 new jobs for your search")
+- `job_alert` - Any other automated job-alert digest (Indeed, ZipRecruiter, Glassdoor, Built In, Wellfound, etc). Pick this when the email is a scheduled list of new job postings from a job board, not a human outreach.
+- `recruiter` - Outreach from a recruiter or hiring manager (new opportunity, asking for time, following up)
+- `app_update` - Update on an application the candidate submitted (received, in review, interview scheduled, screening, etc.)
+- `rejection` - Application rejection or "decided to move forward with other candidates"
+- `offer` - Job offer or offer-related discussion (compensation, negotiation)
+- `other` - Anything else (promotions, newsletters, personal, spam)
+
+# Output Format
+
+Respond with ONLY a JSON array, one object per input email in the same order:
+
+[
+  {"index": 1, "category": "linkedin_alert"},
+  {"index": 2, "category": "recruiter"},
+  ...
+]
+
+No prose, no markdown fences. Just the JSON array.

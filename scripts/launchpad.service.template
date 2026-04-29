@@ -1,0 +1,18 @@
+[Unit]
+Description=LaunchPad job search command center
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+WorkingDirectory=/PATH/TO/launchpad
+ExecStart=/PATH/TO/launchpad/start.sh
+Restart=on-failure
+RestartSec=5
+
+# Optional: tighten sandboxing
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

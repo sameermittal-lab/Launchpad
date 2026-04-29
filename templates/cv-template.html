@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<title>{{ name }} - Resume</title>
+<style>
+@page { size: {{ page_width }} {{ page_height }}; margin: 0.6in; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #fff;
+}
+.header {
+  margin-bottom: 14px;
+}
+.name {
+  font-family: 'Space Grotesk', 'DM Sans', sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+  color: #111;
+}
+.accent-line {
+  height: 2px;
+  background: linear-gradient(to right, hsl(187, 74%, 32%), hsl(270, 70%, 45%));
+  margin-bottom: 8px;
+}
+.contact-row {
+  font-size: 10px;
+  color: #555;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.contact-row .separator {
+  color: hsl(187, 74%, 32%);
+}
+.section-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(187, 74%, 32%);
+  margin-top: 14px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid hsl(187, 74%, 80%);
+  padding-bottom: 2px;
+}
+.summary {
+  font-size: 11px;
+  line-height: 1.55;
+  color: #333;
+  margin-bottom: 4px;
+}
+.competencies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 6px;
+  margin-top: 4px;
+}
+.competency {
+  background: hsl(187, 60%, 95%);
+  color: hsl(187, 74%, 32%);
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 9.5px;
+  font-weight: 500;
+  border: 1px solid hsl(187, 40%, 85%);
+}
+.job {
+  margin-bottom: 10px;
+}
+.job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 2px;
+}
+.job-company {
+  font-weight: 700;
+  color: hsl(270, 70%, 45%);
+  font-size: 12px;
+}
+.job-date {
+  font-size: 10.5px;
+  color: #374151;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-left: 8px;
+}
+.job-title {
+  font-style: italic;
+  color: #444;
+  font-size: 10.5px;
+  margin-bottom: 4px;
+}
+.bullets {
+  list-style: none;
+  margin-left: 0;
+}
+.bullets li {
+  position: relative;
+  padding-left: 12px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #333;
+  margin-bottom: 2px;
+}
+.bullets li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  background: hsl(187, 74%, 32%);
+  border-radius: 50%;
+}
+.project {
+  margin-bottom: 6px;
+}
+.project-name {
+  font-weight: 700;
+  color: #111;
+  font-size: 11px;
+}
+.project-desc {
+  font-size: 10px;
+  color: #444;
+  line-height: 1.5;
+}
+.education-item, .cert-item {
+  margin-bottom: 4px;
+  font-size: 10.5px;
+}
+.education-item .degree {
+  font-weight: 600;
+  color: #111;
+}
+.education-item .school {
+  color: #666;
+}
+.skills-section {
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+.skills-section strong {
+  color: hsl(187, 74%, 32%);
+}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="name">{{ name }}</div>
+    <div class="accent-line"></div>
+    <div class="contact-row">
+      {% if email %}<span>{{ email }}</span>{% endif %}
+      {% if phone %}<span class="separator">·</span><span>{{ phone }}</span>{% endif %}
+      {% if location %}<span class="separator">·</span><span>{{ location }}</span>{% endif %}
+      {% if linkedin %}<span class="separator">·</span><span>{{ linkedin }}</span>{% endif %}
+      {% if portfolio %}<span class="separator">·</span><span>{{ portfolio }}</span>{% endif %}
+    </div>
+  </div>
+
+  {% if summary %}
+  <div class="section-title">Professional Summary</div>
+  <div class="summary">{{ summary | safe }}</div>
+  {% endif %}
+
+  {% if competencies %}
+  <div class="section-title">Core Competencies</div>
+  <div class="competencies">
+    {% for c in competencies %}<span class="competency">{{ c }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if experience %}
+  <div class="section-title">Work Experience</div>
+  {% for job in experience %}
+  <div class="job">
+    <div class="job-header">
+      <div class="job-company">{{ job.company }}</div>
+      <div class="job-date">{{ job.date_range }}</div>
+    </div>
+    <div class="job-title">{{ job.title }}</div>
+    <ul class="bullets">
+      {% for b in job.bullets %}<li>{{ b | safe }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if projects %}
+  <div class="section-title">Projects</div>
+  {% for p in projects %}
+  <div class="project">
+    <span class="project-name">{{ p.name }}</span>
+    {% if p.description %} - <span class="project-desc">{{ p.description | safe }}</span>{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if education %}
+  <div class="section-title">Education</div>
+  {% for e in education %}
+  <div class="education-item">
+    <span class="degree">{{ e.degree }}</span>
+    {% if e.school %} - <span class="school">{{ e.school }}</span>{% endif %}
+    {% if e.year %} - {{ e.year }}{% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if certifications %}
+  <div class="section-title">Certifications</div>
+  {% for c in certifications %}
+  <div class="cert-item">• {{ c }}</div>
+  {% endfor %}
+  {% endif %}
+
+  {% if skills_technical or skills_languages %}
+  <div class="section-title">Skills</div>
+  <div class="skills-section">
+    {% if skills_technical %}<div><strong>Technical:</strong> {{ skills_technical }}</div>{% endif %}
+    {% if skills_languages %}<div><strong>Languages:</strong> {{ skills_languages }}</div>{% endif %}
+  </div>
+  {% endif %}
+</body>
+</html>

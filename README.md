@@ -4,8 +4,10 @@ AI-powered job search command center. Run it once on your laptop or home server,
 
 ## What it does
 
-- **Discovers** jobs from portals (Greenhouse, Ashby, Lever) and your Gmail inbox (any sender — Indeed, LinkedIn, Glassdoor, Wellfound, etc.)
-- **AI Company Monitor** — for companies without a public ATS (Amazon, Microsoft, Google, Apple, Meta, OpenAI, Anthropic), LaunchPad runs a resume-tuned web-search query plan on its own cadence
+- **Discovers** jobs from portals (Greenhouse, Ashby, Lever, **Workday**) and your Gmail inbox (any sender — Indeed, LinkedIn, Glassdoor, Wellfound, etc.)
+- **AI Company Monitor** — for companies without a public ATS (Amazon, Microsoft, Google, Apple, Meta, OpenAI, Anthropic), LaunchPad runs a resume-tuned web-search query plan on its own cadence. Uses **Gemini's Google Search grounding** for fresh, live results when configured.
+- **Smart Title Filter** — optional LLM pass that classifies titles as yes/no/maybe before the expensive full evaluation. Catches synonyms ("Applied AI PM" without literal "AI" keyword) and drops obvious mismatches. ~$0.001 per title.
+- **Batch Evaluate** — evaluate multiple listings at once with adaptive controls: "Evaluate all", "Confident matches only" (smart filter yes), "Top 10 by keyword", or "Maybe only"
 - **AI-suggested companies** — daily list of 8-10 companies to consider tracking, half adjacent to what you track, half net-new discoveries; quick-add with one click
 - **Evaluates** each listing with AI across **8 dimensions** (role, seniority, skills, comp, growth, s-curve, culture, location) using live web search to ground company-specific claims
 - **Tailors** your resume and cover letter per job using LLMs, with a full-page editor for fine tuning
@@ -14,6 +16,9 @@ AI-powered job search command center. Run it once on your laptop or home server,
 - **Pass history calibration** — after you've passed on 15+ roles with reasons, the evaluator factors that into future scores
 - **Tracks** everything: pipeline, history, rejections, follow-ups, interviews, offers, passed listings
 - **Multi-user**: Up to 3 profiles on one server instance, each with their own API keys and Gmail accounts
+- **Mobile-friendly**: Responsive layout with hamburger sidebar, touch-friendly controls — works on phones and tablets
+- **Guided onboarding**: Welcome wizard for first-time setup + 17-step feature tour accessible anytime from the sidebar
+- **Cost tracking**: Sidebar widget with hover popover showing cost by feature and by provider
 
 ## Quick Start
 
@@ -125,7 +130,8 @@ See [`.kiro/specs/launchpad/design.md`](../.kiro/specs/launchpad/design.md) for 
 - **Frontend**: Vanilla HTML/CSS/JS — no build step required
 - **Automation**: Playwright (PDF rendering + JS-heavy scraping)
 - **Gmail**: Google OAuth + Gmail API (per-user credentials.json)
-- **LLM abstraction**: one interface, three providers (Anthropic, OpenAI, Google Gemini) — each provider's native web-search tool is used for company research, evaluation grounding, AI Monitor queries, and suggestions
+- **LLM abstraction**: one interface, three providers (Anthropic, OpenAI, Google Gemini) — each provider's native web-search tool is used for company research, evaluation grounding, AI Monitor queries, and suggestions. Optional dedicated Gemini key for Google Search grounding (fresh results for AI Monitor).
+- **ATS parsers**: Greenhouse, Ashby, Lever, Workday (with auto site-slug discovery)
 - **Background scheduler**: 5 recurring jobs — ATS scanner, Gmail sync, reminders, AI Company Monitor (own cadence), daily AI company suggestions refresh
 
 ### Data Storage
@@ -215,7 +221,7 @@ Those sites don't use a public ATS API (Greenhouse/Ashby/Lever), so the scanner 
 1. **Paste job URLs manually** — the **➕ Add Listing** flow works on any public job page. The URL fetcher + LLM extraction handles the parsing.
 2. **Set up a LinkedIn Job Alert** for that company. LinkedIn emails you matches, and LaunchPad's Gmail sync auto-extracts them into your pipeline. The Scanner page has a **"LinkedIn + Gmail Setup"** walkthrough that shows you exactly how.
 
-Scanner adapters for Workday, SmartRecruiters, Teamtailor, and BambooHR are on the backlog.
+Scanner adapters for SmartRecruiters, Teamtailor, and BambooHR are on the backlog.
 
 ### "Company research feels dated — does it use live data?"
 
@@ -266,7 +272,7 @@ Typical total: ~60–90s from paste-URL to ready-to-review PDF. Subsequent listi
 
 ### "Scanner catches too many junior roles"
 
-Open Settings → **Portal Scanner Filter** and tune your positive / negative keywords. Or click **Smart Setup** on the Resume page to let AI generate them from your resume. The scanner uses string-match on titles only for now — smart LLM-based filtering is on the backlog.
+Open Settings → **Portal Scanner Filter** and tune your positive / negative keywords. Or click **Smart Setup** on the Resume page to let AI generate them from your resume. For more precision, enable the **Smart Title Filter** in Settings — it adds a tiny LLM pass (~$0.001/title) that classifies each title as yes/no/maybe, catching synonyms and dropping obvious mismatches that keyword matching alone would miss.
 
 ### "I broke something — how do I start over?"
 
@@ -313,6 +319,8 @@ Approximate ballpark per listing (GPT-4o or Claude Sonnet tier):
 - Conversational editor (per chat turn): ~$0.01–$0.03
 - AI Company Monitor query-plan generation: ~$0.02–$0.05 per company (cached 30 days or until you click Regenerate)
 - AI Company Monitor scan: ~$0.05–$0.20 per company per scan (default daily; configurable)
+- AI Company Monitor scan (Gemini grounded): ~$0.01–$0.03 per company per scan (fresh Google results)
+- Smart Title Filter: ~$0.001 per title (~$0.015 per batch of 15)
 - Daily company suggestions refresh: ~$0.02–$0.05 per day per profile
 
 The sidebar shows cumulative usage. If you want hard limits, set a project-level cap directly with your LLM provider.

@@ -403,7 +403,11 @@ function renderDashBody(stats, topMatches){
     <h3 style="font-size:16px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px">\u{1F525} Top Matches</h3>
     ${topMatches.length === 0
       ? `<div class="empty-state" style="padding:24px"><div class="es-desc">No matches scoring 4.0+ yet</div></div>`
-      : topMatches.map(j => jobCardHTML(j)).join('')}`;
+      : topMatches.map(j => jobCardHTML(j)).join('')}
+    <div id="dashCostBreakdown" style="margin-top:24px"></div>`;
+
+  // Load cost breakdowns async
+  loadCostBreakdowns();
 }
 
 function jobCardHTML(j){
@@ -6086,4 +6090,79 @@ function endTour() {
   if (_tourOverlay) { _tourOverlay.remove(); _tourOverlay = null; }
   document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
   _tourStep = 0;
+}
+
+// ========================= Cost Breakdowns (Dashboard) =========================
+
+async function loadCostBreakdowns() {
+  const container = document.getElementById('dashCostBreakdown');
+  if (!container) return;
+  try {
+    const usage = await window.api.usage.summary();
+    if (usage.all_time_calls === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    const byFeature = usage.breakdown_by_feature || {};
+    const byProvider = usage.breakdown_by_provider || {};
+
+    // Build feature rows (top 8)
+    const featureEntries = Object.entries(byFeature).slice(0, 8);
+    const maxFeatureCost = Math.max(...featureEntries.map(([,v]) => v.cost), 0.001);
+    const featureRows = featureEntries.map(([name, data]) => {
+      const pct = Math.min(100, (data.cost / maxFeatureCost) * 100);
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <div style="width:140px;font-size:11px;font-weight:600;color:var(--text2);text-align:right;flex-shrink:0">${escapeHtml(name)}</div>
+        <div style="flex:1;background:var(--bg2);border-radius:4px;height:18px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--primary),var(--primary2));border-radius:4px;min-width:2px"></div>
+        </div>
+        <div style="width:60px;font-size:11px;font-weight:700;color:var(--text);text-align:right">$${data.cost.toFixed(3)}</div>
+        <div style="width:40px;font-size:10px;color:var(--text3);text-align:right">${data.calls}</div>
+      </div>`;
+    }).join('');
+
+    // Build provider rows
+    const providerEntries = Object.entries(byProvider);
+    const providerColors = { openai: 'var(--green)', anthropic: 'var(--orange)', google: 'var(--blue)', gemini: 'var(--blue)' };
+    const totalProviderCost = providerEntries.reduce((s, [,v]) => s + v.cost, 0) || 0.001;
+    const providerRows = providerEntries.map(([name, data]) => {
+      const pct = (data.cost / totalProviderCost) * 100;
+      const color = providerColors[name.toLowerCase()] || 'var(--purple)';
+      const label = name === 'openai' ? 'OpenAI' : name === 'anthropic' ? 'Anthropic' : name === 'google' ? 'Gemini' : name;
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <div style="width:80px;font-size:12px;font-weight:700;color:var(--text)">${escapeHtml(label)}</div>
+        <div style="flex:1;background:var(--bg2);border-radius:4px;height:20px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;min-width:2px"></div>
+        </div>
+        <div style="width:60px;font-size:12px;font-weight:700;text-align:right">$${data.cost.toFixed(3)}</div>
+        <div style="width:50px;font-size:10px;color:var(--text3);text-align:right">${data.calls} calls</div>
+      </div>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px">\u{1F4CA} Cost by Feature</div>
+          <div style="display:flex;gap:10px;margin-bottom:8px;font-size:10px;color:var(--text3);font-weight:600">
+            <div style="width:140px;text-align:right">FEATURE</div>
+            <div style="flex:1">COST</div>
+            <div style="width:60px;text-align:right">USD</div>
+            <div style="width:40px;text-align:right">CALLS</div>
+          </div>
+          ${featureRows || '<div style="font-size:12px;color:var(--text3)">No usage data yet</div>'}
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
+          <div style="font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px">\u{1F4B3} Cost by Provider</div>
+          ${providerRows || '<div style="font-size:12px;color:var(--text3)">No usage data yet</div>'}
+          <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;font-size:12px;font-weight:700">
+            <span>Total (all time)</span>
+            <span>$${usage.all_time_cost_usd.toFixed(3)} \u{00B7} ${usage.all_time_calls} calls</span>
+          </div>
+        </div>
+      </div>`;
+  } catch (err) {
+    console.warn('Cost breakdown load failed:', err);
+    container.innerHTML = '';
+  }
 }

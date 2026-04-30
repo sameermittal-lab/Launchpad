@@ -532,3 +532,7 @@ select.fi{cursor:pointer}
   .page-actions{flex-direction:column}
   .page-actions .btn{width:100%;justify-content:center}
 }
+
+/* Tour highlight */
+.tour-highlight{position:relative;z-index:350;outline:2px solid var(--primary);outline-offset:4px;border-radius:var(--radius-sm);animation:tour-pulse 1.5s ease-in-out infinite}
+@keyframes tour-pulse{0%,100%{outline-color:var(--primary)}50%{outline-color:var(--pink)}}

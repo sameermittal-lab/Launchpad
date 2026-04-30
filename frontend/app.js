@@ -19,6 +19,8 @@ function loginAs(profile){
   if (roleEl) roleEl.textContent = profile.role_title || 'User';
   updateSidebarInfo();
   showPage('dashboard');
+  // Check if this is a first-time user and show the setup wizard
+  checkAndShowWizard();
 }
 
 async function updateSidebarInfo(){
@@ -5743,4 +5745,258 @@ async function runBatchEval(mode, context) {
     renderListings(c);
   }
   if (typeof updateNavBadges === 'function') updateNavBadges();
+}
+
+// ========================= Welcome Wizard + Feature Tour =========================
+
+// --- Welcome Wizard (first-time setup) ---
+// Shows on first login when profile has no LLM key configured.
+// Steps: Welcome → Upload Resume → LLM Key → Get Started
+
+async function checkAndShowWizard() {
+  if (!CURRENT_PROFILE) return;
+  const settings = CURRENT_PROFILE.settings || await window.api.settings.get();
+  // Show wizard if no LLM key is set (first-time user)
+  const wizardDismissed = localStorage.getItem(`launchpad.wizard.dismissed.${CURRENT_PROFILE.id}`);
+  if (!settings.has_llm_api_key && !wizardDismissed) {
+    showWelcomeWizard();
+  }
+}
+
+function showWelcomeWizard() {
+  let step = 0;
+  const steps = [
+    { title: 'Welcome to LaunchPad! \u{1F680}', body: `
+      <div style="text-align:center;padding:20px 0">
+        <div style="font-size:48px;margin-bottom:16px">\u{1F680}</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">Your AI-powered job search command center</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.7;max-width:360px;margin:0 auto">
+          LaunchPad helps you discover, evaluate, and track job opportunities using AI.
+          Let's get you set up in 3 quick steps.
+        </div>
+      </div>` },
+    { title: 'Step 1: Upload Your Resume \u{1F4C4}', body: `
+      <div style="padding:10px 0">
+        <div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6">
+          Upload your resume PDF so LaunchPad can tailor it for each job and evaluate how well you match.
+          You can skip this and do it later from the Resume page.
+        </div>
+        <div class="upload-zone" onclick="document.getElementById('wizardResumeInput').click()" style="margin:0">
+          <div class="uz-icon">\u{1F4C4}</div>
+          <div class="uz-title">Drop your resume PDF here</div>
+          <div class="uz-desc">or click to browse</div>
+        </div>
+        <input type="file" id="wizardResumeInput" accept=".pdf" style="display:none" onchange="wizardUploadResume(this)">
+        <div id="wizardResumeStatus" style="margin-top:10px;font-size:12px;text-align:center"></div>
+      </div>` },
+    { title: 'Step 2: Connect Your LLM \u{1F9E0}', body: `
+      <div style="padding:10px 0">
+        <div style="font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6">
+          LaunchPad uses an LLM (like OpenAI or Anthropic) to evaluate jobs, tailor resumes, and generate cover letters.
+          Paste your API key below. Your key is encrypted and never leaves your machine.
+        </div>
+        <div class="fg">
+          <label class="fl">LLM Provider</label>
+          <select class="fi" id="wizardProvider">
+            <option value="openai">OpenAI</option>
+            <option value="anthropic" selected>Anthropic (Claude)</option>
+            <option value="google">Google (Gemini)</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">API Key</label>
+          <input class="fi" id="wizardApiKey" type="password" placeholder="sk-... or your API key">
+        </div>
+        <div id="wizardKeyStatus" style="font-size:12px;margin-top:4px"></div>
+      </div>` },
+    { title: 'You\'re All Set! \u{1F389}', body: `
+      <div style="text-align:center;padding:20px 0">
+        <div style="font-size:48px;margin-bottom:16px">\u{1F389}</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:12px">LaunchPad is ready to go</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.7;max-width:360px;margin:0 auto">
+          <strong>Next steps:</strong><br>
+          \u{2022} Paste a job URL to add your first listing<br>
+          \u{2022} Set up the Portal Scanner to auto-discover jobs<br>
+          \u{2022} Connect Gmail to extract listings from job alerts<br>
+          \u{2022} Click <strong>"Take a Tour"</strong> anytime from the sidebar
+        </div>
+      </div>` },
+  ];
+
+  function render() {
+    const s = steps[step];
+    const isFirst = step === 0;
+    const isLast = step === steps.length - 1;
+    const overlay = document.getElementById('wizardOverlay') || (() => {
+      const el = document.createElement('div');
+      el.id = 'wizardOverlay';
+      el.className = 'modal-overlay open';
+      el.style.cssText = 'display:flex;z-index:300';
+      document.body.appendChild(el);
+      return el;
+    })();
+    overlay.innerHTML = `
+      <div class="modal" style="width:480px;max-width:92vw">
+        <div class="modal-head">
+          <div class="modal-title">${s.title}</div>
+          <span style="font-size:11px;color:var(--text3)">${step + 1} of ${steps.length}</span>
+        </div>
+        <div class="modal-body">${s.body}</div>
+        <div class="modal-foot" style="justify-content:space-between">
+          <div>
+            ${!isFirst ? `<button class="btn btn-ghost" onclick="wizardNav(-1)">\u{2190} Back</button>` : ''}
+          </div>
+          <div style="display:flex;gap:8px">
+            ${!isLast ? `<button class="btn btn-ghost" onclick="dismissWizard()">Skip setup</button>` : ''}
+            ${isLast
+              ? `<button class="btn btn-primary" onclick="dismissWizard()">\u{1F680} Let's go!</button>`
+              : `<button class="btn btn-primary" onclick="wizardNav(1)">Next \u{2192}</button>`}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  window.wizardNav = async function(dir) {
+    // Before advancing from step 2 (LLM key), save the key
+    if (step === 2 && dir > 0) {
+      const provider = document.getElementById('wizardProvider')?.value;
+      const key = document.getElementById('wizardApiKey')?.value?.trim();
+      if (key) {
+        const status = document.getElementById('wizardKeyStatus');
+        if (status) status.innerHTML = '<span style="color:var(--primary)">\u{23F3} Saving...</span>';
+        try {
+          await window.api.settings.update({ llm_provider: provider, llm_api_key: key });
+          if (status) status.innerHTML = '<span style="color:var(--green)">\u{2705} Saved!</span>';
+        } catch (err) {
+          if (status) status.innerHTML = `<span style="color:var(--red)">\u{274C} ${escapeHtml(err.message)}</span>`;
+          return; // Don't advance on error
+        }
+      }
+    }
+    step = Math.max(0, Math.min(steps.length - 1, step + dir));
+    render();
+  };
+
+  window.dismissWizard = function() {
+    localStorage.setItem(`launchpad.wizard.dismissed.${CURRENT_PROFILE.id}`, '1');
+    const overlay = document.getElementById('wizardOverlay');
+    if (overlay) overlay.remove();
+  };
+
+  window.wizardUploadResume = async function(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const status = document.getElementById('wizardResumeStatus');
+    if (status) status.innerHTML = '<span style="color:var(--primary)">\u{23F3} Uploading...</span>';
+    try {
+      await window.api.resumes.uploadPdf(file);
+      if (status) status.innerHTML = '<span style="color:var(--green)">\u{2705} Resume uploaded!</span>';
+    } catch (err) {
+      if (status) status.innerHTML = `<span style="color:var(--red)">\u{274C} ${escapeHtml(err.message)}</span>`;
+    }
+  };
+
+  render();
+}
+
+
+// --- Feature Tour (tooltip-based walkthrough) ---
+// Triggered by "Take a Tour" button. Highlights key UI areas with a spotlight.
+
+const TOUR_STEPS = [
+  { target: '.sidebar-nav .nav-item[data-page="dashboard"]', title: 'Dashboard', text: 'Your home base — see pipeline stats, recent activity, and quick actions at a glance.', position: 'right' },
+  { target: '.sidebar-nav .nav-item[data-page="pipeline"]', title: 'Pipeline Board', text: 'Kanban-style board showing all your listings organized by status: New → Evaluated → Applied → Interview → Offer.', position: 'right' },
+  { target: '.sidebar-nav .nav-item[data-page="scanner"]', title: 'Portal Scanner', text: 'Auto-discover jobs from company career pages. Supports Greenhouse, Ashby, Lever, and Workday. The AI Monitor uses web search to find listings beyond ATS.', position: 'right' },
+  { target: '.sidebar-nav .nav-item[data-page="gmail"]', title: 'Gmail Integration', text: 'Connect your Gmail to automatically extract job listings from Indeed, LinkedIn, and recruiter emails.', position: 'right' },
+  { target: '.sidebar-nav .nav-item[data-page="settings"]', title: 'Settings', text: 'Configure your LLM provider, title filters, scoring weights, Google Search, and more.', position: 'right' },
+  { target: '.topbar-search input', title: 'Global Search', text: 'Search across all listings by company name, role title, or keyword. Works on every page.', position: 'bottom' },
+  { target: '.topbar-actions', title: 'Quick Actions', text: 'Scan for new jobs or add a listing by pasting a URL — available from any page.', position: 'bottom' },
+];
+
+let _tourStep = 0;
+let _tourOverlay = null;
+
+function startTour() {
+  _tourStep = 0;
+  closeSidebarIfMobile();
+  // On mobile, open sidebar first since most tour targets are there
+  if (window.innerWidth <= 768) {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (sidebar) sidebar.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+  }
+  showTourStep();
+}
+
+function showTourStep() {
+  // Clean up previous
+  if (_tourOverlay) _tourOverlay.remove();
+  document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+
+  if (_tourStep >= TOUR_STEPS.length) {
+    endTour();
+    return;
+  }
+
+  const step = TOUR_STEPS[_tourStep];
+  const target = document.querySelector(step.target);
+
+  if (!target) {
+    // Skip missing targets
+    _tourStep++;
+    showTourStep();
+    return;
+  }
+
+  // Highlight the target
+  target.classList.add('tour-highlight');
+  const rect = target.getBoundingClientRect();
+
+  // Create tooltip
+  _tourOverlay = document.createElement('div');
+  _tourOverlay.id = 'tourTooltip';
+  _tourOverlay.style.cssText = `position:fixed;z-index:400;pointer-events:auto`;
+
+  // Position tooltip
+  let top, left;
+  if (step.position === 'right') {
+    top = rect.top + rect.height / 2 - 60;
+    left = rect.right + 12;
+  } else {
+    top = rect.bottom + 12;
+    left = rect.left;
+  }
+  // Keep on screen
+  top = Math.max(8, Math.min(window.innerHeight - 200, top));
+  left = Math.max(8, Math.min(window.innerWidth - 320, left));
+
+  _tourOverlay.style.top = top + 'px';
+  _tourOverlay.style.left = left + 'px';
+
+  _tourOverlay.innerHTML = `
+    <div style="background:var(--surface);border:1.5px solid var(--primary);border-radius:var(--radius-sm);padding:16px;width:280px;box-shadow:var(--shadow-xl)">
+      <div style="font-size:14px;font-weight:700;margin-bottom:6px">${step.title}</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:12px">${step.text}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:11px;color:var(--text3)">${_tourStep + 1} of ${TOUR_STEPS.length}</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="endTour()">End tour</button>
+          <button class="btn btn-primary btn-sm" onclick="nextTourStep()">${_tourStep < TOUR_STEPS.length - 1 ? 'Next \u{2192}' : 'Done \u{2705}'}</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(_tourOverlay);
+}
+
+function nextTourStep() {
+  _tourStep++;
+  showTourStep();
+}
+
+function endTour() {
+  if (_tourOverlay) { _tourOverlay.remove(); _tourOverlay = null; }
+  document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+  _tourStep = 0;
 }

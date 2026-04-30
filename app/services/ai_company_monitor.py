@@ -164,50 +164,139 @@ async def _execute_query_plan(
     company: TrackedCompany,
     plan: dict,
 ) -> list[SearchHit]:
-    """Execute the query plan — tries Google Custom Search first (fresh index),
-    falls back to LLM web search if Google credentials aren't configured.
+    """Execute the query plan — tries Gemini grounded search first (fresh Google index),
+    falls back to the primary LLM's web search if Gemini isn't available.
 
-    When Google is used, the raw search results are passed to the LLM for
-    structuring (extract company, role_title, url, location from snippets).
-    This gives us Google's fresh index + LLM's understanding.
+    Priority:
+    1. Gemini google_search grounding (dedicated search key or primary Gemini key)
+    2. Primary LLM's built-in web search + liveness HEAD check
     """
     queries = plan.get("queries") or []
     if not queries:
         return []
 
-    # Check if Google Custom Search is configured
+    # Determine if we can use Gemini grounded search
     from app.services.secrets import decrypt
-    google_key_enc = getattr(profile, "google_search_api_key_enc", None)
-    google_cx = getattr(profile, "google_search_cx", None)
+    gemini_key = None
 
-    if google_key_enc and google_cx:
+    # Option 1: dedicated Gemini search key
+    gemini_enc = getattr(profile, "gemini_search_api_key_enc", None)
+    if gemini_enc:
         try:
-            google_key = decrypt(google_key_enc)
-            return await _execute_via_google(db, profile, company, plan, google_key, google_cx)
+            gemini_key = decrypt(gemini_enc)
+        except Exception:
+            pass
+
+    # Option 2: primary LLM is Gemini — reuse the same key
+    if not gemini_key and profile.llm_provider == "google" and profile.llm_api_key_enc:
+        try:
+            gemini_key = decrypt(profile.llm_api_key_enc)
+        except Exception:
+            pass
+
+    if gemini_key:
+        try:
+            return await _execute_via_gemini_search(db, profile, company, plan, gemini_key)
         except Exception as exc:
             logger.warning(
-                f"Google search failed for {company.name}, falling back to LLM search: {exc}"
+                f"Gemini grounded search failed for {company.name}, falling back to LLM search: {exc}"
             )
-            # Fall through to LLM search
 
     return await _execute_via_llm_search(db, profile, company, plan)
 
 
-async def _execute_via_google(
+async def _execute_via_gemini_search(
     db: Session,
     profile: Profile,
     company: TrackedCompany,
     plan: dict,
-    google_key: str,
-    google_cx: str,
+    gemini_key: str,
 ) -> list[SearchHit]:
-    """Google Custom Search → LLM structuring pipeline.
+    """Gemini grounded search pipeline.
 
-    1. Run each query via Google CSE (parallel, fresh results)
-    2. Collect all raw results (title, url, snippet)
-    3. Pass them to the LLM to extract structured fields
-    4. Dedupe by canonical URL key
+    Uses Gemini's native google_search tool to get fresh results from Google's
+    live index. Each query in the plan becomes a separate Gemini call with
+    grounding enabled. Results are parsed into SearchHits.
     """
+    import httpx
+
+    queries = plan.get("queries") or []
+    all_hits: list[SearchHit] = []
+    seen_keys: set[str] = set()
+
+    api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for q in queries:
+            query_str = q.get("q") or ""
+            if not query_str:
+                continue
+
+            prompt = (
+                f"Search for: {query_str}\n\n"
+                f"Return ALL job listings you find as a JSON array. Each item must have: "
+                f"title, url, location (or null if not visible).\n"
+                f"Output ONLY the JSON array, no other text or markdown fences."
+            )
+
+            body = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "tools": [{"google_search": {}}],
+                "generationConfig": {"maxOutputTokens": 4000, "temperature": 0.1},
+            }
+
+            try:
+                resp = await client.post(api_url, params={"key": gemini_key}, json=body)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as exc:
+                logger.warning(f"Gemini search failed for query '{query_str}': {exc}")
+                continue
+
+            # Extract text from response
+            text = ""
+            for cand in data.get("candidates", []):
+                for part in cand.get("content", {}).get("parts", []):
+                    if "text" in part:
+                        text += part["text"]
+
+            if not text.strip():
+                continue
+
+            # Parse JSON from the response
+            try:
+                parsed = _extract_json(text)
+            except Exception:
+                logger.warning(f"Gemini search JSON parse failed for '{query_str}'")
+                continue
+
+            items = parsed if isinstance(parsed, list) else (parsed.get("listings") or parsed.get("items") or []) if isinstance(parsed, dict) else []
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                url = (item.get("url") or "").strip()
+                title = (item.get("title") or "").strip()
+                if not url or not title:
+                    continue
+                url = normalize_listing_url(url)
+                key = canonical_url_key(url)
+                if not key or key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                all_hits.append(SearchHit(
+                    company=company.name,
+                    role_title=title,
+                    url=url,
+                    location=item.get("location") or None,
+                    source_query=query_str,
+                ))
+
+            # Track usage
+            log_usage(db, profile.id, "ai_monitor_gemini_search", type("R", (), {"text": text, "input_tokens": 0, "output_tokens": 0, "model": "gemini-2.5-flash"})())
+
+    logger.info(f"Gemini grounded search for {company.name}: {len(all_hits)} hits from {len(queries)} queries")
+    return all_hits
     from app.services.google_search import google_search_multi
 
     queries = plan.get("queries") or []

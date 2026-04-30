@@ -74,12 +74,11 @@ class Profile(Base):
     # the deterministic keyword filter is the only gate.
     smart_title_filter_enabled: Mapped[bool] = mapped_column(default=False)
 
-    # Google Custom Search API credentials (for AI Company Monitor).
-    # When set, the AI monitor uses Google's fresh index instead of the LLM's
-    # built-in web search, which often returns stale/filled positions.
-    # Free tier: 100 queries/day. Setup: https://programmablesearchengine.google.com
-    google_search_api_key_enc: Mapped[Optional[str]] = mapped_column(Text)
-    google_search_cx: Mapped[Optional[str]] = mapped_column(String(100))
+    # Google Search for AI Monitor — uses Gemini's google_search grounding tool
+    # to get fresh results from Google's live index. When the user's primary LLM
+    # is already Gemini, this field can be left empty (uses the primary key).
+    # When primary is OpenAI/Anthropic, a separate Gemini key is needed.
+    gemini_search_api_key_enc: Mapped[Optional[str]] = mapped_column(Text)
 
     # Title filter for scanner (JSON list of strings)
     title_positive_keywords: Mapped[list] = mapped_column(

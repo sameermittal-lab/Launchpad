@@ -61,9 +61,8 @@ class SettingsResponse(BaseModel):
     # Smart title filter (opt-in LLM pass yes/no/maybe)
     smart_title_filter_enabled: bool
 
-    # Google Custom Search (for AI Monitor — fresh results instead of stale LLM search)
-    has_google_search_key: bool
-    google_search_cx: Optional[str]
+    # Google Search (for AI Monitor — fresh results via Gemini grounding)
+    has_gemini_search_key: bool
 
 
 class SettingsUpdate(BaseModel):
@@ -111,9 +110,8 @@ class SettingsUpdate(BaseModel):
     # Smart title filter (opt-in LLM pass yes/no/maybe)
     smart_title_filter_enabled: Optional[bool] = None
 
-    # Google Custom Search (for AI Monitor)
-    google_search_api_key: Optional[str] = None  # plaintext — will be encrypted
-    google_search_cx: Optional[str] = None
+    # Google Search (for AI Monitor)
+    gemini_search_api_key: Optional[str] = None  # plaintext — will be encrypted
 
 
 class TestConnectionRequest(BaseModel):
@@ -148,8 +146,7 @@ def get_settings(profile: Profile = Depends(get_current_profile)):
         ai_monitor_interval_hours=int(getattr(profile, "ai_monitor_interval_hours", 24) or 24),
         job_alert_senders=list(getattr(profile, "job_alert_senders", []) or []),
         smart_title_filter_enabled=bool(getattr(profile, "smart_title_filter_enabled", False)),
-        has_google_search_key=bool(getattr(profile, "google_search_api_key_enc", None)),
-        google_search_cx=getattr(profile, "google_search_cx", None),
+        has_gemini_search_key=bool(getattr(profile, "gemini_search_api_key_enc", None)) or (profile.llm_provider == "google" and bool(profile.llm_api_key_enc)),
     )
 
 
@@ -211,6 +208,14 @@ def update_settings(
         else:
             profile.google_search_api_key_enc = None
 
+    # Gemini Search API key — for AI Monitor grounded search
+    if "gemini_search_api_key" in update_dict:
+        gkey = update_dict.pop("gemini_search_api_key")
+        if gkey:
+            profile.gemini_search_api_key_enc = encrypt(gkey)
+        else:
+            profile.gemini_search_api_key_enc = None
+
     # Weights: validate + normalize
     if "scoring_weights" in update_dict and update_dict["scoring_weights"] is not None:
         update_dict["scoring_weights"] = _validate_weights(update_dict["scoring_weights"])
@@ -271,8 +276,7 @@ def update_settings(
         ai_monitor_interval_hours=int(getattr(profile, "ai_monitor_interval_hours", 24) or 24),
         job_alert_senders=list(getattr(profile, "job_alert_senders", []) or []),
         smart_title_filter_enabled=bool(getattr(profile, "smart_title_filter_enabled", False)),
-        has_google_search_key=bool(getattr(profile, "google_search_api_key_enc", None)),
-        google_search_cx=getattr(profile, "google_search_cx", None),
+        has_gemini_search_key=bool(getattr(profile, "gemini_search_api_key_enc", None)) or (profile.llm_provider == "google" and bool(profile.llm_api_key_enc)),
     )
 
 

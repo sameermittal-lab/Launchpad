@@ -3579,48 +3579,35 @@ async function renderSettings(c){
       <div class="scard-header">
         <div class="scard-icon sci-scan">\u{1F50D}</div>
         <div>
-          <div class="scard-title">Google Search (AI Monitor)</div>
-          <div class="scard-desc">When configured, the AI Company Monitor uses Google's fresh search index instead of the LLM's built-in web search (which often returns stale/filled positions). Free tier: 100 queries/day. ~5 min one-time setup.</div>
+          <div class="scard-title">Live Google Search (AI Monitor)</div>
+          <div class="scard-desc">Uses Gemini's Google Search grounding to get fresh, live job listings instead of the LLM's cached web search (which often returns stale/filled positions). ~$0.01 per company scan.</div>
         </div>
       </div>
-      <details style="margin-bottom:12px;background:var(--bg2);border-radius:var(--radius-sm);padding:10px 14px">
+      ${s.llm_provider === 'google' && s.has_llm_api_key
+        ? '<div style="background:var(--green-soft);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--green);font-weight:600;margin-bottom:12px">\u{2705} Your primary Gemini key will be used for search — no extra key needed.</div>'
+        : `<details style="margin-bottom:12px;background:var(--bg2);border-radius:var(--radius-sm);padding:10px 14px">
         <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--primary)">Setup instructions (click to expand)</summary>
         <div style="font-size:12px;line-height:1.7;color:var(--text2);margin-top:8px">
-          <strong>Step 1 — Create a Google Cloud API Key</strong>
-          <ol style="margin:4px 0 10px 18px;padding:0">
-            <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--primary)">console.cloud.google.com/apis/credentials</a></li>
-            <li>Create a project if you don't have one (name it anything, e.g. "LaunchPad")</li>
-            <li>Click <strong>+ Create Credentials \u{2192} API Key</strong> \u{2192} copy the key</li>
-            <li>Then go to <a href="https://console.cloud.google.com/apis/library/customsearch.googleapis.com" target="_blank" style="color:var(--primary)">API Library \u{2192} Custom Search API</a> \u{2192} click <strong>Enable</strong></li>
+          <strong>Why a separate key?</strong> Your primary LLM is ${escapeHtml(s.llm_provider || 'not Gemini')}. To use Google's live search index, the AI Monitor needs a Gemini API key.
+          <ol style="margin:8px 0 10px 18px;padding:0">
+            <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary)">aistudio.google.com/apikey</a></li>
+            <li>Click <strong>"Create API key"</strong> \u{2192} select any project</li>
+            <li>Set up billing on the project (required \u{2014} credit card needed, but cost is ~$0.01 per scan)</li>
+            <li>Copy the key and paste it below</li>
           </ol>
-          <strong>Step 2 — Create a Programmable Search Engine</strong>
-          <ol style="margin:4px 0 10px 18px;padding:0">
-            <li>Go to <a href="https://programmablesearchengine.google.com/controlpanel/create" target="_blank" style="color:var(--primary)">programmablesearchengine.google.com</a> \u{2192} Create</li>
-            <li>Name it anything (e.g. "LaunchPad Job Search")</li>
-            <li>In "Sites to search", type <code style="background:var(--bg1);padding:1px 5px;border-radius:4px">www.google.com</code> and click Add (this is just a placeholder to pass form validation)</li>
-            <li>Complete the reCAPTCHA \u{2192} click <strong>Create</strong></li>
-            <li>After creation, go into the engine's settings and toggle <strong>"Search the entire web"</strong> ON (this overrides the placeholder site)</li>
-            <li>Copy the <strong>Search engine ID</strong> (looks like <code style="background:var(--bg1);padding:1px 5px;border-radius:4px">a1b2c3d4e5f6g7h8i</code>)</li>
-          </ol>
-          <strong>Step 3 — Paste both values below and Save</strong>
-          <div style="margin-top:6px;color:var(--text3)">
-            <strong>Cost:</strong> 100 queries/day free (no credit card needed). Each AI Monitor scan uses ~4 queries, so ~25 company scans/day at zero cost. Beyond 100/day: $5 per 1,000 queries.
+          <div style="margin-top:6px;padding:8px 10px;background:var(--primary-soft);border-radius:var(--radius-xs);font-size:11px">
+            <strong>\u{1F512} Privacy:</strong> With a paid-tier key, Google does NOT use your search data to train their models and no human review occurs. Your job search stays private.
           </div>
         </div>
       </details>
       <div class="fg">
-        <label class="fl">Google API Key</label>
-        <input class="fi" id="set-google-search-key" type="password" placeholder="${s.has_google_search_key ? '\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022} (saved)' : 'Paste your Google API key'}" autocomplete="off">
-      </div>
-      <div class="fg">
-        <label class="fl">Search Engine ID (cx)</label>
-        <input class="fi" id="set-google-search-cx" value="${escapeHtml(s.google_search_cx || '')}" placeholder="e.g. a1b2c3d4e5f6g7h8i">
-      </div>
-      ${s.has_google_search_key && s.google_search_cx
-        ? '<div style="font-size:11px;color:var(--success);font-weight:600;margin-top:4px">\u{2705} Google Search configured — AI Monitor will use fresh results</div>'
-        : s.has_google_search_key
-          ? '<div style="font-size:11px;color:var(--warning);font-weight:600;margin-top:4px">\u{26A0}\u{FE0F} API key saved but Search Engine ID is missing — add the cx value above</div>'
-          : '<div style="font-size:11px;color:var(--text3);font-weight:500;margin-top:4px">\u{26A0}\u{FE0F} Not configured — AI Monitor falls back to LLM web search (may return stale results)</div>'
+        <label class="fl">Gemini Search API Key</label>
+        <input class="fi" id="set-gemini-search-key" type="password" placeholder="${s.has_gemini_search_key ? '\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022} (saved)' : 'Paste your Gemini API key'}" autocomplete="off">
+      </div>`
+      }
+      ${s.has_gemini_search_key
+        ? '<div style="font-size:11px;color:var(--success);font-weight:600;margin-top:4px">\u{2705} Live Google Search active \u{2014} AI Monitor will return fresh, verified listings</div>'
+        : (s.llm_provider !== 'google' ? '<div style="font-size:11px;color:var(--text3);font-weight:500;margin-top:4px">\u{26A0}\u{FE0F} Not configured \u{2014} AI Monitor falls back to LLM web search (may return stale results)</div>' : '')
       }
     </div>
 
@@ -4255,11 +4242,9 @@ async function saveSettings(){
   const newKey = document.getElementById('set-llm-key').value;
   if (newKey) payload.llm_api_key = newKey;
 
-  // Google Search credentials
-  const gKey = document.getElementById('set-google-search-key')?.value;
-  if (gKey) payload.google_search_api_key = gKey;
-  const gCx = document.getElementById('set-google-search-cx')?.value?.trim();
-  if (gCx !== undefined) payload.google_search_cx = gCx || null;
+  // Gemini Search API key (for AI Monitor grounded search)
+  const geminiKey = document.getElementById('set-gemini-search-key')?.value;
+  if (geminiKey) payload.gemini_search_api_key = geminiKey;
 
   try {
     const updated = await window.api.settings.update(payload);

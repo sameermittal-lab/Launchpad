@@ -107,6 +107,7 @@ def _apply_simple_migrations() -> None:
         "smart_title_filter_enabled": "BOOLEAN DEFAULT 0",
         "google_search_api_key_enc": "TEXT",
         "google_search_cx": "VARCHAR(100)",
+        "gemini_search_api_key_enc": "TEXT",
     })
     ensure_columns("listings", {
         "tailored_resume_md": "TEXT",

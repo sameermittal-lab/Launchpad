@@ -4284,6 +4284,11 @@ async function saveSettings(){
     document.getElementById('currentProfileName').textContent = updated.name;
     const initials = updated.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
     document.getElementById('currentProfileAvatar').textContent = initials;
+    // Re-render weight sliders with the server-normalized values
+    if (updated.scoring_weights) {
+      window._scoringWeights = updated.scoring_weights;
+      renderWeightSliders();
+    }
     statusEl.textContent = '\u2713 Saved';
     statusEl.style.color = 'var(--green)';
     setTimeout(() => { statusEl.textContent = ''; }, 2000);

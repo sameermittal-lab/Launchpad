@@ -213,12 +213,27 @@ async function showProfileSwitcher(){
 }
 
 function toggleSidebar(){
-  document.getElementById('sidebar').classList.toggle('mobile-open');
+  const sidebar = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebarBackdrop');
+  const isOpen = sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', !isOpen);
+  if (backdrop) backdrop.classList.toggle('open', !isOpen);
+}
+
+// Close sidebar when navigating on mobile
+function closeSidebarIfMobile() {
+  if (window.innerWidth <= 768) {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (sidebar) sidebar.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+  }
 }
 
 function showPage(page){
   // Stop any page-scoped timers from the previous page
   if (typeof _stopSuggCountdown === 'function') _stopSuggCountdown();
+  closeSidebarIfMobile();
 
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
   const c=document.getElementById('content');

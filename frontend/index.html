@@ -134,8 +134,9 @@
 
 <!-- MAIN -->
 <div class="main" id="main" style="display:none">
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleSidebar()"></div>
   <div class="topbar">
-    <button class="mobile-menu-btn" onclick="toggleSidebar()">&#x2630;</button>
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle menu"><span></span><span></span><span></span></button>
     <div class="topbar-search">
       <span class="si">&#x1F50D;</span>
       <input type="text" id="globalSearch" placeholder="Search listings by company, role, or keyword..." oninput="handleGlobalSearch(this.value)">

@@ -25,6 +25,7 @@ class ScanResult:
     new_listings: int
     new_listing_ids: list[int]
     errors: list[dict]
+    smart_dropped: int = 0  # listings dropped by smart title filter (verdict "no")
 
 
 def _title_matches_filter(
@@ -100,10 +101,23 @@ async def scan_all_companies(
     total_found = 0
     filtered = 0
     dupes = 0
+    smart_dropped = 0
     new_ids: list[int] = []
     errors: list[dict] = []
 
     now = datetime.utcnow()
+
+    # Two-phase collection so we can run the smart title filter in batches
+    # (one LLM call per ~15 titles instead of per-listing):
+    #   Phase 1: collect candidates that survive keyword filter + URL dedup
+    #   Phase 2: optional smart-filter pass on candidate titles
+    #   Phase 3: create Listing rows for survivors
+    @dataclass
+    class _ScanCandidate:
+        company: TrackedCompany
+        job: ScannedJob
+
+    candidates: list[_ScanCandidate] = []
 
     for company, result in zip(companies, results):
         if isinstance(result, Exception):
@@ -127,21 +141,45 @@ async def scan_all_companies(
             if not _title_matches_filter(job.title, positive, negative):
                 filtered += 1
                 continue
-
-            listing = Listing(
-                profile_id=profile.id,
-                url=job.url,
-                source="scanner",
-                source_detail=company.name,
-                company=job.company or company.name,
-                role_title=job.title,
-                location=job.location,
-                job_type=_detect_job_type(job.location),
-                status="new",
-            )
-            db.add(listing)
+            candidates.append(_ScanCandidate(company=company, job=job))
             existing_urls.add(job.url)
-            new_ids.append(id(listing))  # temp marker, replaced post-commit
+
+    # Phase 2 — optional smart-filter pass (per-profile opt-in)
+    smart_on = bool(getattr(profile, "smart_title_filter_enabled", False))
+    verdicts_by_idx = {}
+    if smart_on and candidates and profile.llm_api_key_enc:
+        try:
+            from app.services.smart_title_filter import classify_titles
+            items = [
+                {"title": c.job.title, "company": c.job.company or c.company.name}
+                for c in candidates
+            ]
+            verdicts_by_idx = await classify_titles(db, profile, items)
+        except Exception as exc:
+            logger.warning(f"Smart title filter pass failed; proceeding without it: {exc}")
+            verdicts_by_idx = {}
+
+    # Phase 3 — create Listing rows for survivors
+    for idx, cand in enumerate(candidates):
+        verdict = verdicts_by_idx.get(idx) if smart_on else None
+        if verdict is not None and verdict.verdict == "no":
+            smart_dropped += 1
+            continue
+        listing = Listing(
+            profile_id=profile.id,
+            url=cand.job.url,
+            source="scanner",
+            source_detail=cand.company.name,
+            company=cand.job.company or cand.company.name,
+            role_title=cand.job.title,
+            location=cand.job.location,
+            job_type=_detect_job_type(cand.job.location),
+            status="new",
+            smart_filter_verdict=(verdict.verdict if verdict is not None else None),
+            smart_filter_reason=(verdict.reason if verdict is not None else None),
+        )
+        db.add(listing)
+        new_ids.append(id(listing))  # temp marker, replaced post-commit
 
     db.commit()
 
@@ -176,10 +214,12 @@ async def scan_all_companies(
         new_listings=len(new_listings),
         new_listing_ids=new_ids,
         errors=errors,
+        smart_dropped=smart_dropped,
     )
     logger.info(
         f"Scan for profile {profile.id}: "
         f"{result.new_listings} new from {result.companies_scanned} companies "
-        f"({result.total_jobs_found} found, {result.filtered_out} filtered, {result.duplicates} dupes)"
+        f"({result.total_jobs_found} found, {result.filtered_out} filtered, "
+        f"{result.smart_dropped} smart-filtered, {result.duplicates} dupes)"
     )
     return result

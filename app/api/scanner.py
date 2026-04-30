@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models import Profile, TrackedCompany
+from app.models import Listing, Profile, TrackedCompany
 from app.services.scanner import scan_all_companies, scan_company
 from app.services.scanner.parsers import detect_api
 from app.utils.session import get_current_profile
@@ -68,6 +68,7 @@ class ScanResponse(BaseModel):
     total_jobs_found: int
     filtered_out: int
     duplicates: int
+    smart_dropped: int = 0
     new_listings: int
     new_listing_ids: list[int]
     errors: list[dict]
@@ -232,6 +233,138 @@ def load_default_companies(
     return {"added": added, "total_defaults": len(defaults)}
 
 
+class TrackByNameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    hint_url: Optional[str] = None
+    enable_ai_monitor: bool = False
+
+
+class TrackByNameResponse(BaseModel):
+    company: CompanyResponse
+    created: bool
+    careers_source: str  # "derived_from_url" | "llm_web_search" | "existing"
+    ai_monitor_bootstrap_run_id: Optional[int] = None
+
+
+@router.post("/companies/track-by-name", response_model=TrackByNameResponse)
+async def track_company_by_name(
+    data: TrackByNameRequest,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+):
+    """Quick-add a company by name.
+
+    Resolves the careers URL via:
+      1. Deterministic inference from `hint_url` (job URL, careers URL) — free
+      2. LLM web search — incremental cost, only when step 1 fails
+
+    Creates a TrackedCompany row. If `enable_ai_monitor=true`, additionally
+    bootstraps the AI Monitor (generate plan + run first scan).
+
+    Idempotent: if a company with the same name already exists (case-insensitive),
+    returns it instead of creating a duplicate. If `enable_ai_monitor=true` and
+    the company already exists with monitor OFF, flips monitor ON and bootstraps.
+    """
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Company name cannot be empty")
+
+    # Already tracked? Return existing row (maybe flip monitor on)
+    existing = (
+        db.query(TrackedCompany)
+        .filter(TrackedCompany.profile_id == profile.id)
+        .filter(TrackedCompany.name.ilike(name))
+        .first()
+    )
+    if existing is not None:
+        run_id = None
+        if data.enable_ai_monitor and not existing.ai_monitor_enabled:
+            if not profile.llm_api_key_enc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Add an LLM API key in Settings first to enable AI Monitor",
+                )
+            existing.ai_monitor_enabled = True
+            db.commit()
+            try:
+                from app.services.ai_company_monitor import run_ai_monitor_for_company
+                from app.services.query_planner import ensure_query_plan
+                await ensure_query_plan(db, profile, existing)
+                run = await run_ai_monitor_for_company(
+                    db, profile, existing, trigger="bootstrap",
+                )
+                run_id = run.id
+            except Exception as exc:
+                # Don't fail the whole call if AI bootstrap errors — user can retry from the UI
+                logger.warning(f"AI bootstrap on existing company {existing.name} failed: {exc}")
+        return TrackByNameResponse(
+            company=_to_company_response(existing),
+            created=False,
+            careers_source="existing",
+            ai_monitor_bootstrap_run_id=run_id,
+        )
+
+    # Resolve careers URL
+    from app.services.careers_url_resolver import resolve_careers_url
+    resolved = await resolve_careers_url(db, profile, name, hint_url=data.hint_url)
+    if resolved is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Could not locate a careers URL for this company. Add it manually "
+                "via the Scanner page."
+            ),
+        )
+
+    # Detect ATS API if applicable
+    api = detect_api(resolved.careers_url)
+    platform = resolved.platform
+    if api and platform == "custom":
+        platform = api.provider  # prefer the more specific ATS detection
+
+    company = TrackedCompany(
+        profile_id=profile.id,
+        name=name,
+        careers_url=resolved.careers_url,
+        api_url=api.url if api else None,
+        platform=platform,
+        notes=resolved.notes,
+        enabled=True,
+        ai_monitor_enabled=bool(data.enable_ai_monitor),
+    )
+    db.add(company)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Could not create company row")
+    db.refresh(company)
+
+    run_id = None
+    if data.enable_ai_monitor:
+        if not profile.llm_api_key_enc:
+            raise HTTPException(
+                status_code=400,
+                detail="Add an LLM API key in Settings first to enable AI Monitor",
+            )
+        try:
+            from app.services.ai_company_monitor import run_ai_monitor_for_company
+            from app.services.query_planner import ensure_query_plan
+            await ensure_query_plan(db, profile, company)
+            run = await run_ai_monitor_for_company(db, profile, company, trigger="bootstrap")
+            run_id = run.id
+        except Exception as exc:
+            logger.warning(f"AI bootstrap on newly-tracked company {name} failed: {exc}")
+            # Keep the company created; user can retry from UI
+
+    return TrackByNameResponse(
+        company=_to_company_response(company),
+        created=True,
+        careers_source=resolved.source,
+        ai_monitor_bootstrap_run_id=run_id,
+    )
+
+
 # ------------------------- Scan triggers -------------------------
 
 
@@ -252,6 +385,7 @@ async def scan_now(
         total_jobs_found=result.total_jobs_found,
         filtered_out=result.filtered_out,
         duplicates=result.duplicates,
+        smart_dropped=getattr(result, "smart_dropped", 0),
         new_listings=result.new_listings,
         new_listing_ids=result.new_listing_ids,
         errors=result.errors,

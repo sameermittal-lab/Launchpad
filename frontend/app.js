@@ -431,10 +431,10 @@ async function renderPipeline(c){
     for (const j of all) {
       if (byStatus[j.status]) byStatus[j.status].push(j);
     }
-    // Bulk-eval button if there are unevaluated listings
+    // Bulk-eval button if there are unevaluated listings — adaptive based on smart filter
     const bulk = document.getElementById('pipelineBulkActions');
     if (bulk && byStatus.new.length > 0) {
-      bulk.innerHTML = `<button class="btn btn-ghost" onclick="evaluateAllNew()" id="evalAllBtn" title="Evaluate every listing in the New column">\u{2728} Evaluate All New (${byStatus.new.length})</button>`;
+      renderBatchEvalBanner(bulk, 'pipeline');
     }
     const cols = [
       {title: 'New', status: 'new', dot: 'dot-new', jobs: byStatus.new},
@@ -583,6 +583,8 @@ async function evaluateAllNew(){
 }
 
 async function renderListings(c){
+  // Register sort reloader so header clicks re-render with the new sort
+  registerTableSortReload('all_listings', () => renderListings(c));
   c.innerHTML = `
     <div class="page-header">
       <div>
@@ -590,15 +592,19 @@ async function renderListings(c){
         <div class="page-subtitle">Everything in your pipeline</div>
       </div>
       <div class="page-actions">
-        <button class="btn btn-ghost" onclick="evaluateAllNewFromAllListings()" id="listingsEvalAllBtn">\u{2728} Evaluate All New</button>
+        <span id="listingsBulkActions"></span>
         <button class="btn btn-ghost" onclick="cleanupByFilter()" title="Retroactively apply your title filter to existing listings">\u{1F9F9} Apply filter</button>
         <button class="btn btn-primary" onclick="showAddModal()">\u{2795} Add</button>
       </div>
     </div>
+    <div id="batchEvalBannerListings"></div>
     <div id="listingsTable"><div class="empty-state"><div class="es-icon">\u{23F3}</div><div class="es-desc">Loading...</div></div></div>`;
 
   try {
     const all = await window.api.listings.list({ limit: 500 });
+    // Render the adaptive batch eval banner above the table
+    const bannerEl = document.getElementById('batchEvalBannerListings');
+    if (bannerEl) renderBatchEvalBanner(bannerEl, 'listings');
     if (all.length === 0) {
       document.getElementById('listingsTable').innerHTML = `
         <div class="empty-state" style="padding:60px 20px">
@@ -612,9 +618,18 @@ async function renderListings(c){
     document.getElementById('listingsTable').innerHTML = `
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Company</th><th>Role</th><th>Location</th><th>Score</th><th>Status</th><th>Source</th><th>Date</th><th></th></tr></thead>
+          <thead><tr>
+            ${sortableHeader('all_listings', 'company', 'Company', 'string')}
+            ${sortableHeader('all_listings', 'role_title', 'Role', 'string')}
+            ${sortableHeader('all_listings', 'location', 'Location', 'string')}
+            ${sortableHeader('all_listings', 'score', 'Score', 'number')}
+            ${sortableHeader('all_listings', 'status', 'Status', 'string')}
+            ${sortableHeader('all_listings', 'source', 'Source', 'string')}
+            ${sortableHeader('all_listings', 'created_at', 'Date', 'date')}
+            <th></th>
+          </tr></thead>
           <tbody>
-            ${all.map(j => {
+            ${applyTableSort(all, 'all_listings', 'created_at', 'desc', 'date').map(j => {
               const rowEvalBtn = j.score == null
                 ? `<button class="btn btn-ghost btn-sm" title="Evaluate with AI" onclick="event.stopPropagation();evaluateFromRow(${j.id}, this, false)">\u{2728}</button>`
                 : `<button class="btn btn-ghost btn-sm" title="Re-evaluate with AI" onclick="event.stopPropagation();evaluateFromRow(${j.id}, this, true)">\u{1F504}</button>`;
@@ -726,6 +741,8 @@ async function renderScanner(c){
 }
 
 function renderScannerBody(companies){
+  // Register sort reloader so clicking a column header re-renders with the new sort
+  registerTableSortReload('scanner_companies', () => renderScannerBody(companies));
   const body = document.getElementById('scannerBody');
   if (companies.length === 0){
     body.innerHTML = `
@@ -773,15 +790,15 @@ function renderScannerBody(companies){
       <table>
         <thead>
           <tr>
-            <th>Company</th>
-            <th>Jobs Found</th>
-            <th>AI Monitor \u{2728}</th>
-            <th>ATS Platform</th>
+            ${sortableHeader('scanner_companies', 'name', 'Company', 'string')}
+            ${sortableHeader('scanner_companies', 'last_job_count', 'Jobs Found', 'number')}
+            ${sortableHeader('scanner_companies', 'last_ai_monitor_at', 'AI Monitor \u{2728}', 'date')}
+            ${sortableHeader('scanner_companies', 'last_scanned_at', 'ATS Platform', 'date')}
             <th></th>
           </tr>
         </thead>
         <tbody>
-          ${companies.map(co => {
+          ${applyTableSort(companies, 'scanner_companies', 'name', 'asc', 'string').map(co => {
             const isCustom = (co.platform === 'custom') || !co.api_url;
             const atsCount = co.last_job_count || 0;
             const aiCount = co.last_ai_monitor_count || 0;
@@ -1302,6 +1319,114 @@ function showAddCompanyModal(){
 // ============================================================================
 // AI Company Monitor — per-company query plans + web-search scans
 // ============================================================================
+
+// Shared "Track this company" quick-add used by the listing detail panel and the
+// Companies research page. Given a company name + optional hint URL, resolves
+// the careers URL (derive first, LLM web search fallback) and creates a
+// TrackedCompany row. Optionally enables AI Monitor in the same call.
+async function trackCompany({ name, hintUrl = null, enableAiMonitor = false, btn = null }) {
+  if (!name || !name.trim()) {
+    alert('Missing company name.');
+    return null;
+  }
+  const original = btn ? btn.innerHTML : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = enableAiMonitor
+      ? '\u{23F3} Setting up AI Monitor...'
+      : '\u{23F3} Finding careers page...';
+  }
+  try {
+    const res = await window.api.scanner.trackByName(name.trim(), hintUrl, enableAiMonitor);
+    if (btn) {
+      if (enableAiMonitor) {
+        btn.innerHTML = '\u{2705} Tracked \u00b7 \u{2728} AI On';
+      } else {
+        btn.innerHTML = '\u{2705} Tracked';
+      }
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-ghost');
+    }
+    // If AI bootstrap ran, pop the run detail modal so the user sees what was found
+    if (enableAiMonitor && res.ai_monitor_bootstrap_run_id) {
+      setTimeout(() => openAiRunDetail(res.ai_monitor_bootstrap_run_id), 500);
+    }
+    return res;
+  } catch (err) {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+    alert('Could not track company: ' + err.message);
+    return null;
+  }
+}
+
+// Render a small split-button dropdown for "Track this company"
+// Use: document.getElementById(hostId).innerHTML = trackCompanyButtonHTML({...})
+// Then clicks dispatch to the functions defined below.
+function trackCompanyButtonHTML({ id, name, hintUrl = '', alreadyTracked = false, aiOn = false }) {
+  if (alreadyTracked) {
+    const label = aiOn
+      ? '\u{2705} Tracked \u00b7 \u{2728} AI On'
+      : '\u{2705} Tracked';
+    return `<button class="btn btn-ghost btn-sm" disabled title="This company is already being tracked">${label}</button>`;
+  }
+  const safeName = escapeHtml(name).replace(/"/g, '&quot;');
+  const safeHint = escapeHtml(hintUrl || '').replace(/"/g, '&quot;');
+  return `
+    <div class="track-split-btn" data-id="${id}" style="display:inline-flex;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--primary)">
+      <button class="btn btn-primary btn-sm" style="border-radius:0;border:none" onclick="trackCompanyFromBtn(this, '${safeName}', '${safeHint}', false)">\u{2795} Track company</button>
+      <button class="btn btn-primary btn-sm" style="border-radius:0;border:none;border-left:1px solid rgba(255,255,255,0.3);padding:4px 8px" title="More options" onclick="toggleTrackMenu(this)">\u25BE</button>
+      <div class="track-menu" style="position:absolute;display:none;background:var(--bg1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:4px;margin-top:30px;box-shadow:var(--shadow-sm);z-index:100;min-width:220px">
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:flex-start;text-align:left;border-radius:4px" onclick="trackCompanyFromBtn(this, '${safeName}', '${safeHint}', false)">\u{2795} Track (ATS scanner only)</button>
+        <button class="btn btn-ghost btn-sm" style="width:100%;justify-content:flex-start;text-align:left;border-radius:4px;margin-top:2px" onclick="trackCompanyFromBtn(this, '${safeName}', '${safeHint}', true)">\u{2728} Track + enable AI Monitor</button>
+      </div>
+    </div>`;
+}
+
+function toggleTrackMenu(chevronBtn) {
+  const wrap = chevronBtn.closest('.track-split-btn');
+  if (!wrap) return;
+  const menu = wrap.querySelector('.track-menu');
+  if (!menu) return;
+  const open = menu.style.display !== 'none';
+  // Close all other menus first
+  document.querySelectorAll('.track-menu').forEach(m => m.style.display = 'none');
+  menu.style.display = open ? 'none' : 'block';
+  if (!open) {
+    // Close on outside click
+    const closer = (e) => {
+      if (!wrap.contains(e.target)) {
+        menu.style.display = 'none';
+        document.removeEventListener('click', closer);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closer), 0);
+  }
+}
+
+// Click handler that reads name + hintUrl from button dataset and calls trackCompany().
+// Used by both the inline "Track company" button and the menu items in the split dropdown.
+async function trackCompanyFromBtn(btn, name, hintUrl, enableAiMonitor) {
+  // Close any open track menu so the feedback state is clearly visible
+  const wrap = btn.closest('.track-split-btn');
+  if (wrap) {
+    const menu = wrap.querySelector('.track-menu');
+    if (menu) menu.style.display = 'none';
+    // Disable the whole split button during the call
+    wrap.style.opacity = '0.6';
+  }
+  const res = await trackCompany({ name, hintUrl: hintUrl || null, enableAiMonitor, btn });
+  if (res && wrap) {
+    // Replace the whole split button with the "Tracked" state
+    const aiOn = !!(res.company && res.company.ai_monitor_enabled);
+    const label = aiOn ? '\u{2705} Tracked \u00b7 \u{2728} AI On' : '\u{2705} Tracked';
+    wrap.outerHTML = `<button class="btn btn-ghost btn-sm" disabled>${label}</button>`;
+  } else if (wrap) {
+    wrap.style.opacity = '';
+  }
+}
 
 function showAiMonitorHelp(){
   const overlay = document.createElement('div');
@@ -2824,6 +2949,7 @@ async function regenerateStories(){
 }
 
 async function renderCompanies(c){
+  registerTableSortReload('companies_research', () => renderCompanies(c));
   c.innerHTML = `
   <div class="page-header">
     <div>
@@ -2831,6 +2957,7 @@ async function renderCompanies(c){
       <div class="page-subtitle">AI-cached intelligence on companies in your pipeline</div>
     </div>
     <div class="page-actions">
+      ${companiesSortSelectorHTML()}
       <button class="btn btn-primary" onclick="showResearchCompanyModal()">\u{2728} Research Company</button>
     </div>
   </div>
@@ -2842,6 +2969,31 @@ async function renderCompanies(c){
   } catch (err) {
     document.getElementById('companiesBody').innerHTML = `<div class="empty-state"><div class="es-icon">\u{26A0}</div><div class="es-desc">${escapeHtml(err.message)}</div></div>`;
   }
+}
+
+function companiesSortSelectorHTML() {
+  const st = getSortState('companies_research') || { field: 'refreshed_at', dir: 'desc' };
+  const opts = [
+    { field: 'name', dir: 'asc', label: 'Name (A\u2192Z)', dataType: 'string' },
+    { field: 'name', dir: 'desc', label: 'Name (Z\u2192A)', dataType: 'string' },
+    { field: 'refreshed_at', dir: 'desc', label: 'Recently refreshed', dataType: 'date' },
+    { field: 'refreshed_at', dir: 'asc', label: 'Oldest refresh', dataType: 'date' },
+  ];
+  const selected = `${st.field}|${st.dir}`;
+  return `<select class="fi" style="width:auto;font-size:12px;padding:6px 10px;font-weight:600" onchange="selectCompaniesSort(this.value)">
+    ${opts.map(o => {
+      const val = `${o.field}|${o.dir}|${o.dataType}`;
+      const sel = `${o.field}|${o.dir}` === selected ? 'selected' : '';
+      return `<option value="${val}" ${sel}>\u2195 ${o.label}</option>`;
+    }).join('')}
+  </select>`;
+}
+
+function selectCompaniesSort(val) {
+  const [field, dir, dataType] = val.split('|');
+  saveSortState('companies_research', { field, dir, dataType });
+  const reload = (window._tableSortReloaders || {})['companies_research'];
+  if (reload) reload();
 }
 
 function renderCompaniesBody(companies){
@@ -2856,7 +3008,41 @@ function renderCompaniesBody(companies){
       </div>`;
     return;
   }
-  body.innerHTML = companies.map(c => companyCardHTML(c)).join('');
+  const sorted = applyTableSort(companies, 'companies_research', 'refreshed_at', 'desc', 'date');
+  body.innerHTML = sorted.map(c => companyCardHTML(c)).join('');
+  // Populate Track-this-company buttons asynchronously (one lookup per visible card)
+  populateCompaniesTrackButtons(sorted).catch(() => {});
+}
+
+async function populateCompaniesTrackButtons(companies) {
+  let tracked = [];
+  try {
+    tracked = await window.api.scanner.listCompanies();
+  } catch (err) {
+    return; // Silent — tracking is optional, research still works
+  }
+  const trackedByName = new Map(
+    (tracked || []).map(t => [(t.name || '').toLowerCase(), t])
+  );
+  for (const c of companies) {
+    const host = document.getElementById(`cp-track-${c.id}`);
+    if (!host) continue;
+    const match = trackedByName.get((c.name || '').toLowerCase());
+    if (match) {
+      const aiOn = !!match.ai_monitor_enabled;
+      const label = aiOn ? '\u{2705} Tracked \u00b7 \u{2728} AI On' : '\u{2705} Tracked';
+      host.innerHTML = `<button class="btn btn-ghost btn-sm" disabled title="Being tracked by the scanner">${label}</button>`;
+    } else {
+      // Use the cached careers_url as hint if available (saves an LLM call)
+      const hintUrl = c.careers_url || (c.research_data && c.research_data.careers_url) || '';
+      host.innerHTML = trackCompanyButtonHTML({
+        id: `cp-${c.id}`,
+        name: c.name,
+        hintUrl,
+        alreadyTracked: false,
+      });
+    }
+  }
 }
 
 function companyCardHTML(c){
@@ -2885,6 +3071,7 @@ function companyCardHTML(c){
               </div>
             </div>
             <div style="display:flex;gap:6px;flex-shrink:0">
+              <span id="cp-track-${c.id}"></span>
               <button class="btn btn-ghost btn-sm" onclick="refreshCompany(${c.id})">\u{1F504} Refresh</button>
               <button class="btn btn-danger btn-sm" onclick="deleteCompanyResearch(${c.id}, '${escapeHtml(c.name).replace(/'/g, '&#39;')}')">\u{2715}</button>
             </div>
@@ -3355,6 +3542,13 @@ async function renderSettings(c){
         <div id="sf-negative-tags" class="rp-tags" style="margin-bottom:8px;min-height:10px"></div>
         <input class="fi" id="sf-negative-input" placeholder="Type a keyword and press Enter">
       </div>
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-label">Smart title filter (beta)</div>
+          <div class="toggle-desc">Adds a tiny LLM pass that classifies titles yes/no/maybe. Drops obvious mismatches (e.g. "HTML Designer" matching "ML") and catches synonyms ("Applied AI PM" without literal "AI" keyword). ~$0.001 per title.</div>
+        </div>
+        <button class="toggle ${s.smart_title_filter_enabled?'on':''}" id="set-smart-title-filter" onclick="this.classList.toggle('on')"></button>
+      </div>
       <div style="background:var(--primary-soft);border-radius:var(--radius-sm);padding:10px 12px;font-size:11px;color:var(--primary);font-weight:600;display:flex;align-items:center;gap:8px">
         <span>\u{1F4A1} Let AI generate these from your resume?</span>
         <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="showPage('resume')">\u{1F9E0} Smart Setup</button>
@@ -3362,6 +3556,55 @@ async function renderSettings(c){
       <div style="margin-top:10px;text-align:right">
         <button class="btn btn-ghost btn-sm" onclick="resetScannerDefaults()">\u{21A9} Reset to defaults</button>
       </div>
+    </div>
+
+    <div class="scard">
+      <div class="scard-header">
+        <div class="scard-icon sci-scan">\u{1F50D}</div>
+        <div>
+          <div class="scard-title">Google Search (AI Monitor)</div>
+          <div class="scard-desc">When configured, the AI Company Monitor uses Google's fresh search index instead of the LLM's built-in web search (which often returns stale/filled positions). Free tier: 100 queries/day. ~5 min one-time setup.</div>
+        </div>
+      </div>
+      <details style="margin-bottom:12px;background:var(--bg2);border-radius:var(--radius-sm);padding:10px 14px">
+        <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--primary)">Setup instructions (click to expand)</summary>
+        <div style="font-size:12px;line-height:1.7;color:var(--text2);margin-top:8px">
+          <strong>Step 1 — Create a Google Cloud API Key</strong>
+          <ol style="margin:4px 0 10px 18px;padding:0">
+            <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--primary)">console.cloud.google.com/apis/credentials</a></li>
+            <li>Create a project if you don't have one (name it anything, e.g. "LaunchPad")</li>
+            <li>Click <strong>+ Create Credentials \u{2192} API Key</strong> \u{2192} copy the key</li>
+            <li>Then go to <a href="https://console.cloud.google.com/apis/library/customsearch.googleapis.com" target="_blank" style="color:var(--primary)">API Library \u{2192} Custom Search API</a> \u{2192} click <strong>Enable</strong></li>
+          </ol>
+          <strong>Step 2 — Create a Programmable Search Engine</strong>
+          <ol style="margin:4px 0 10px 18px;padding:0">
+            <li>Go to <a href="https://programmablesearchengine.google.com/controlpanel/create" target="_blank" style="color:var(--primary)">programmablesearchengine.google.com</a> \u{2192} Create</li>
+            <li>Name it anything (e.g. "LaunchPad Job Search")</li>
+            <li>In "Sites to search", type <code style="background:var(--bg1);padding:1px 5px;border-radius:4px">www.google.com</code> and click Add (this is just a placeholder to pass form validation)</li>
+            <li>Complete the reCAPTCHA \u{2192} click <strong>Create</strong></li>
+            <li>After creation, go into the engine's settings and toggle <strong>"Search the entire web"</strong> ON (this overrides the placeholder site)</li>
+            <li>Copy the <strong>Search engine ID</strong> (looks like <code style="background:var(--bg1);padding:1px 5px;border-radius:4px">a1b2c3d4e5f6g7h8i</code>)</li>
+          </ol>
+          <strong>Step 3 — Paste both values below and Save</strong>
+          <div style="margin-top:6px;color:var(--text3)">
+            <strong>Cost:</strong> 100 queries/day free (no credit card needed). Each AI Monitor scan uses ~4 queries, so ~25 company scans/day at zero cost. Beyond 100/day: $5 per 1,000 queries.
+          </div>
+        </div>
+      </details>
+      <div class="fg">
+        <label class="fl">Google API Key</label>
+        <input class="fi" id="set-google-search-key" type="password" placeholder="${s.has_google_search_key ? '\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022} (saved)' : 'Paste your Google API key'}" autocomplete="off">
+      </div>
+      <div class="fg">
+        <label class="fl">Search Engine ID (cx)</label>
+        <input class="fi" id="set-google-search-cx" value="${escapeHtml(s.google_search_cx || '')}" placeholder="e.g. a1b2c3d4e5f6g7h8i">
+      </div>
+      ${s.has_google_search_key && s.google_search_cx
+        ? '<div style="font-size:11px;color:var(--success);font-weight:600;margin-top:4px">\u{2705} Google Search configured — AI Monitor will use fresh results</div>'
+        : s.has_google_search_key
+          ? '<div style="font-size:11px;color:var(--warning);font-weight:600;margin-top:4px">\u{26A0}\u{FE0F} API key saved but Search Engine ID is missing — add the cx value above</div>'
+          : '<div style="font-size:11px;color:var(--text3);font-weight:500;margin-top:4px">\u{26A0}\u{FE0F} Not configured — AI Monitor falls back to LLM web search (may return stale results)</div>'
+      }
     </div>
 
     <div class="scard">
@@ -3605,6 +3848,96 @@ function escapeHtml(str){
   if(!str)return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
+
+// ============================================================================
+// Reusable sort helper for data tables.
+// ============================================================================
+//
+// getSortState(tableKey) -> { field, dir } with sensible defaults applied by
+// the caller when saved state is missing.
+//
+// sortTable(tableKey, field, dataType) — called from column header onclick.
+// Flips direction if already active, else sets ascending for the new field,
+// persists to localStorage, then invokes the registered reload function.
+//
+// sortRows(rows, field, dir, dataType) — deterministic in-place sort helper
+// handling null/undefined gracefully. dataType: 'string' | 'number' | 'date'.
+//
+// sortableHeader(tableKey, field, label, dataType) — emits a <th> with the
+// current-sort arrow and onclick handler wired up.
+
+window._tableSortReloaders = window._tableSortReloaders || {};
+
+function registerTableSortReload(tableKey, fn) {
+  window._tableSortReloaders[tableKey] = fn;
+}
+
+function getSortState(tableKey) {
+  try {
+    const raw = localStorage.getItem(`launchpad.sort.${tableKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.field && (parsed.dir === 'asc' || parsed.dir === 'desc')) {
+      return parsed;
+    }
+  } catch {}
+  return null;
+}
+
+function saveSortState(tableKey, state) {
+  try {
+    localStorage.setItem(`launchpad.sort.${tableKey}`, JSON.stringify(state));
+  } catch {}
+}
+
+function sortTable(tableKey, field, dataType) {
+  const prev = getSortState(tableKey);
+  const dir = (prev && prev.field === field && prev.dir === 'asc') ? 'desc' : 'asc';
+  saveSortState(tableKey, { field, dir, dataType });
+  const reload = (window._tableSortReloaders || {})[tableKey];
+  if (typeof reload === 'function') {
+    try { reload(); } catch (err) { console.error('sort reload failed', err); }
+  }
+}
+
+function sortRows(rows, field, dir, dataType) {
+  if (!Array.isArray(rows) || !field) return rows;
+  const mul = dir === 'desc' ? -1 : 1;
+  const getter = (o) => (o == null ? null : o[field]);
+  const isNully = (v) => v == null || v === '';
+  return [...rows].sort((a, b) => {
+    const av = getter(a);
+    const bv = getter(b);
+    if (isNully(av) && isNully(bv)) return 0;
+    if (isNully(av)) return 1;  // nulls always at end regardless of dir
+    if (isNully(bv)) return -1;
+    if (dataType === 'number') {
+      return (Number(av) - Number(bv)) * mul;
+    }
+    if (dataType === 'date') {
+      return (new Date(av).getTime() - new Date(bv).getTime()) * mul;
+    }
+    return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * mul;
+  });
+}
+
+function sortableHeader(tableKey, field, label, dataType) {
+  const st = getSortState(tableKey);
+  const active = st && st.field === field;
+  const arrow = !active ? '\u2195'  // up-down arrows
+    : st.dir === 'asc' ? '\u25B4'    // up triangle
+    : '\u25BE';                      // down triangle
+  const color = active ? 'var(--primary)' : 'var(--text3)';
+  return `<th style="cursor:pointer;user-select:none" onclick="sortTable('${tableKey}','${field}','${dataType}')" title="Sort by ${escapeHtml(label)}">
+    ${escapeHtml(label)} <span style="color:${color};font-size:11px;margin-left:4px">${arrow}</span>
+  </th>`;
+}
+
+function applyTableSort(rows, tableKey, defaultField, defaultDir, defaultDataType) {
+  const st = getSortState(tableKey) || { field: defaultField, dir: defaultDir, dataType: defaultDataType };
+  return sortRows(rows, st.field, st.dir, st.dataType || defaultDataType);
+}
+
 
 // Global search across listings - works from any page
 let _searchTimer = null;
@@ -3893,6 +4226,7 @@ async function saveSettings(){
     cover_letter_tone: document.getElementById('set-cl-tone').value,
     scan_interval_hours: parseInt(document.getElementById('set-scan-interval').value),
     ai_monitor_interval_hours: parseInt(document.getElementById('set-ai-monitor-interval')?.value || 24),
+    smart_title_filter_enabled: document.getElementById('set-smart-title-filter')?.classList.contains('on') ?? false,
     web_grounded_eval: document.getElementById('set-web-grounded')?.classList.contains('on') ?? true,
     scoring_weights: window._scoringWeights || undefined,
     pass_calibration_preference: document.getElementById('set-pass-calibration-pref')?.value || undefined,
@@ -3903,6 +4237,12 @@ async function saveSettings(){
   };
   const newKey = document.getElementById('set-llm-key').value;
   if (newKey) payload.llm_api_key = newKey;
+
+  // Google Search credentials
+  const gKey = document.getElementById('set-google-search-key')?.value;
+  if (gKey) payload.google_search_api_key = gKey;
+  const gCx = document.getElementById('set-google-search-cx')?.value?.trim();
+  if (gCx !== undefined) payload.google_search_cx = gCx || null;
 
   try {
     const updated = await window.api.settings.update(payload);
@@ -4525,6 +4865,7 @@ const PASS_REASON_LABELS_PAGE = {
 };
 
 async function renderPassed(c) {
+  registerTableSortReload('passed_listings', () => renderPassed(c));
   c.innerHTML = `
     <div class="page-header">
       <div>
@@ -4573,7 +4914,8 @@ async function renderPassed(c) {
       .map(([r, n]) => `<span class="tag" style="margin-right:6px;background:var(--bg2)">${escapeHtml(PASS_REASON_LABELS_PAGE[r] || r)}: <strong>${n}</strong></span>`)
       .join('');
 
-    const rowsHtml = data.items.map(p => {
+    const sortedItems = applyTableSort(data.items, 'passed_listings', 'passed_at', 'desc', 'date');
+    const rowsHtml = sortedItems.map(p => {
       const scoreCol = p.score != null ? p.score.toFixed(1) : '\u2014';
       const scoreClr = p.score == null ? 'var(--text3)' : p.score >= 4 ? 'var(--green)' : p.score >= 3.5 ? '#a16207' : 'var(--red)';
       const when = p.passed_at ? new Date(p.passed_at).toLocaleDateString() : '';
@@ -4599,7 +4941,15 @@ async function renderPassed(c) {
       <div style="margin-bottom:14px">${reasonChips}</div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Company</th><th>Role</th><th>Score</th><th>Reason</th><th>Note</th><th>Date</th><th></th></tr></thead>
+          <thead><tr>
+            ${sortableHeader('passed_listings', 'company', 'Company', 'string')}
+            ${sortableHeader('passed_listings', 'role_title', 'Role', 'string')}
+            ${sortableHeader('passed_listings', 'score', 'Score', 'number')}
+            ${sortableHeader('passed_listings', 'pass_reason', 'Reason', 'string')}
+            <th>Note</th>
+            ${sortableHeader('passed_listings', 'passed_at', 'Date', 'date')}
+            <th></th>
+          </tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table>
       </div>`;
@@ -5299,4 +5649,83 @@ function chatToggle(editorKind) {
 
 function isChatVisible(editorKind) {
   return localStorage.getItem(`launchpad.chat.${editorKind}.visible`) === '1';
+}
+
+// ========================= Batch Evaluation Banner =========================
+// Adaptive UI that changes based on whether smart title filter is enabled.
+// Smart OFF: [Evaluate all (N)] [Top 10 by keyword] [Skip]
+// Smart ON:  [Evaluate all (N)] [Confident matches only (C of N)] [Skip]
+//            + inline "M ambiguous titles skipped — [Evaluate them anyway]"
+
+async function renderBatchEvalBanner(container, context) {
+  try {
+    const cohort = await window.api.listings.batchEvaluateCohort();
+    if (cohort.unevaluated_total === 0) {
+      container.innerHTML = '';
+      return;
+    }
+    const est = `~$${(cohort.unevaluated_total * 0.03).toFixed(2)} estimated`;
+    const n = cohort.unevaluated_total;
+
+    if (cohort.smart_filter_enabled) {
+      // Smart ON layout
+      const confidentN = cohort.confident;
+      const maybeN = cohort.maybe;
+      const noVerdictN = cohort.no_verdict;
+      let btns = `<button class="btn btn-primary btn-sm" onclick="runBatchEval('all','${context}')" title="${est}">\u{2728} Evaluate all (${n})</button>`;
+      if (confidentN > 0 && confidentN < n) {
+        btns += ` <button class="btn btn-ghost btn-sm" onclick="runBatchEval('confident','${context}')" title="Only titles the smart filter marked 'yes'">\u{2705} Confident matches only (${confidentN} of ${n})</button>`;
+      }
+      btns += ` <button class="btn btn-ghost btn-sm" onclick="this.closest('.batch-eval-banner')?.remove()">Skip</button>`;
+      let maybeLine = '';
+      if (maybeN > 0) {
+        maybeLine = `<div style="margin-top:6px;font-size:11px;color:var(--text-muted)">${maybeN} ambiguous title${maybeN===1?'':'s'} skipped \u2014 <a href="#" onclick="event.preventDefault();runBatchEval('maybe_only','${context}')">Evaluate them anyway</a></div>`;
+      }
+      container.innerHTML = `
+        <div class="batch-eval-banner" style="background:var(--primary-soft);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+          <span style="font-size:13px;font-weight:600;color:var(--primary)">${n} new listing${n===1?'':'s'} waiting for evaluation</span>
+          <span style="font-size:11px;color:var(--text-muted)">${est}</span>
+          <span style="flex:1"></span>
+          ${btns}
+          ${maybeLine}
+        </div>`;
+    } else {
+      // Smart OFF layout
+      let btns = `<button class="btn btn-primary btn-sm" onclick="runBatchEval('all','${context}')" title="${est}">\u{2728} Evaluate all (${n})</button>`;
+      btns += ` <button class="btn btn-ghost btn-sm" onclick="runBatchEval('keyword_top','${context}')" title="Top 10 by keyword overlap with your target roles">\u{1F3AF} Top 10 by keyword</button>`;
+      btns += ` <button class="btn btn-ghost btn-sm" onclick="this.closest('.batch-eval-banner')?.remove()">Skip</button>`;
+      container.innerHTML = `
+        <div class="batch-eval-banner" style="background:var(--primary-soft);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+          <span style="font-size:13px;font-weight:600;color:var(--primary)">${n} new listing${n===1?'':'s'} waiting for evaluation</span>
+          <span style="font-size:11px;color:var(--text-muted)">${est}</span>
+          <span style="flex:1"></span>
+          ${btns}
+        </div>`;
+    }
+  } catch (err) {
+    console.warn('Batch eval banner failed:', err);
+    container.innerHTML = '';
+  }
+}
+
+async function runBatchEval(mode, context) {
+  const banner = document.querySelector('.batch-eval-banner');
+  if (banner) {
+    banner.innerHTML = `<span style="font-size:13px;color:var(--primary)">\u{23F3} Running batch evaluation (${mode})...</span>`;
+  }
+  try {
+    const result = await window.api.listings.batchEvaluate(mode);
+    const msg = `Batch evaluation complete.\n\n\u2713 Evaluated: ${result.evaluated}\n\u2717 Failed: ${result.failed}${result.skipped ? `\n\u23E9 Skipped: ${result.skipped}` : ''}`;
+    alert(msg);
+  } catch (err) {
+    alert('Batch evaluation failed: ' + err.message);
+  }
+  // Refresh the page that triggered this
+  const c = document.getElementById('content');
+  if (context === 'pipeline' && typeof renderPipeline === 'function') {
+    renderPipeline(c);
+  } else if (context === 'listings' && typeof renderListings === 'function') {
+    renderListings(c);
+  }
+  if (typeof updateNavBadges === 'function') updateNavBadges();
 }

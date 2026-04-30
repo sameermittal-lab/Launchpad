@@ -55,6 +55,11 @@ class Listing(Base):
     # Stale locks (> 3 min) are ignored so a crashed eval doesn't jam the listing.
     evaluation_in_progress: Mapped[Optional[datetime]] = mapped_column(DateTime)
 
+    # Smart title filter verdict (if the feature was on when this listing was added).
+    # Values: "yes" | "no" | "maybe" | null (filter didn't run).
+    smart_filter_verdict: Mapped[Optional[str]] = mapped_column(String(10))
+    smart_filter_reason: Mapped[Optional[str]] = mapped_column(String(200))
+
     # Per-listing chat for resume/cover-letter editing. Shared thread across
     # both documents (Option C design) — each turn is scoped to resume,
     # cover_letter, or both, and the LLM sees the full history + current docs.

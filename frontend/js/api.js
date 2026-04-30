@@ -80,6 +80,16 @@ window.api = {
     update: (id, data) => apiRequest(`/api/listings/${id}`, { method: 'PUT', body: data }),
     delete: (id) => apiRequest(`/api/listings/${id}`, { method: 'DELETE' }),
     evaluate: (id) => apiRequest(`/api/listings/${id}/evaluate`, { method: 'POST' }),
+    batchEvaluate: (mode = 'all', opts = {}) => apiRequest('/api/listings/batch-evaluate', {
+      method: 'POST',
+      body: {
+        mode,
+        ids: opts.ids || null,
+        limit: opts.limit || null,
+        concurrency: opts.concurrency || 4,
+      },
+    }),
+    batchEvaluateCohort: () => apiRequest('/api/listings/batch-evaluate/cohort'),
     filterSweepPreview: () => apiRequest('/api/listings/filter-sweep/preview'),
     filterSweepApply: () => apiRequest('/api/listings/filter-sweep/apply', { method: 'POST' }),
     pass: (id, reason, note) => apiRequest(`/api/listings/${id}/pass`, {
@@ -179,6 +189,9 @@ window.api = {
     updateCompany: (id, data) => apiRequest(`/api/scanner/companies/${id}`, { method: 'PUT', body: data }),
     deleteCompany: (id) => apiRequest(`/api/scanner/companies/${id}`, { method: 'DELETE' }),
     loadDefaults: () => apiRequest('/api/scanner/companies/load-defaults', { method: 'POST' }),
+    trackByName: (name, hint_url, enable_ai_monitor) => apiRequest('/api/scanner/companies/track-by-name', {
+      method: 'POST', body: { name, hint_url: hint_url || null, enable_ai_monitor: !!enable_ai_monitor },
+    }),
     scanNow: (autoEvaluate = false) => apiRequest(`/api/scanner/scan?auto_evaluate=${autoEvaluate}`, { method: 'POST' }),
     scanCompany: (id) => apiRequest(`/api/scanner/companies/${id}/scan`, { method: 'POST' }),
     getTitleFilter: () => apiRequest('/api/scanner/title-filter'),

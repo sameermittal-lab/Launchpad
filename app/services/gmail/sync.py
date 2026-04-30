@@ -275,6 +275,40 @@ async def _extract_listings_from_email(
             "url": item["url"],
             "location": item.get("location"),
         })
+
+    # Optional smart-title-filter pass — only runs when the profile has it on.
+    # "no" verdicts are added to the dropped list (with "smart filter:" reason
+    # prefix) so the user can still click "Add anyway" from the email detail view.
+    smart_on = bool(getattr(profile, "smart_title_filter_enabled", False))
+    if smart_on and kept and profile.llm_api_key_enc:
+        try:
+            from app.services.smart_title_filter import classify_titles
+            items = [
+                {"title": e["role_title"], "company": e["company"]}
+                for e in kept
+            ]
+            verdicts = await classify_titles(db, profile, items)
+        except Exception as exc:
+            logger.warning(f"Smart filter pass failed during fresh sync: {exc}")
+            verdicts = {}
+        if verdicts:
+            survived: list[dict] = []
+            for idx, entry in enumerate(kept):
+                v = verdicts.get(idx)
+                if v is not None and v.verdict == "no":
+                    dropped.append({
+                        "company": entry["company"],
+                        "role_title": entry["role_title"],
+                        "url": entry["url"],
+                        "reason": f"smart filter: {v.reason or 'off-target'}",
+                    })
+                    continue
+                if v is not None:
+                    entry["_smart_verdict"] = v.verdict
+                    entry["_smart_reason"] = v.reason
+                survived.append(entry)
+            kept = survived
+
     return kept, summary, dropped, no_url, llm_claimed
 
 
@@ -376,9 +410,51 @@ async def extract_listings_from_stored_message(
             "location": item.get("location"),
         })
 
-    # Persist results — ALWAYS mark processed, even if zero listings
-    email_msg.extracted_listings = extracted
-    email_msg.filtered_listings = auto_dropped or None
+    # Optional smart-title-filter pass (profile opt-in). Runs on the survivors
+    # of the keyword filter so we spend no LLM cost on already-rejected titles.
+    # Verdicts are attached to each entry so we can persist them on the Listing
+    # row at creation time.
+    smart_on = bool(getattr(profile, "smart_title_filter_enabled", False))
+    smart_dropped: list[dict] = []
+    verdict_by_idx: dict[int, "object"] = {}
+    if smart_on and extracted and profile.llm_api_key_enc:
+        try:
+            from app.services.smart_title_filter import classify_titles
+            items = [
+                {"title": e["role_title"], "company": e["company"]}
+                for e in extracted
+            ]
+            verdict_by_idx = await classify_titles(db, profile, items)
+        except Exception as exc:
+            logger.warning(f"Smart filter pass failed on email {email_msg.id}: {exc}")
+            verdict_by_idx = {}
+
+    if smart_on and verdict_by_idx:
+        kept_after_smart: list[dict] = []
+        for idx, entry in enumerate(extracted):
+            v = verdict_by_idx.get(idx)
+            if v is not None and v.verdict == "no":
+                smart_dropped.append({
+                    "company": entry["company"],
+                    "role_title": entry["role_title"],
+                    "url": entry["url"],
+                    "reason": f"smart filter: {v.reason or 'off-target'}",
+                })
+                continue
+            entry["_smart_verdict"] = (v.verdict if v else None)
+            entry["_smart_reason"] = (v.reason if v else None)
+            kept_after_smart.append(entry)
+        extracted = kept_after_smart
+
+    # Persist results — ALWAYS mark processed, even if zero listings.
+    # Combine keyword + smart drops so the UI's "filtered" list shows both.
+    all_dropped = (auto_dropped or []) + smart_dropped
+    # Strip the internal _smart_* keys before storing the extracted payload so
+    # the frontend keeps the clean shape it expects.
+    email_msg.extracted_listings = [
+        {k: v for k, v in e.items() if not k.startswith("_")} for e in extracted
+    ]
+    email_msg.filtered_listings = all_dropped or None
     email_msg.processed = True
     # Note: ai_summary is set below after extraction_meta so we can reconcile
     # the LLM's self-reported counts with the real post-filter numbers.
@@ -417,6 +493,8 @@ async def extract_listings_from_stored_message(
             role_title=entry["role_title"],
             location=entry.get("location"),
             status="new",
+            smart_filter_verdict=entry.get("_smart_verdict"),
+            smart_filter_reason=entry.get("_smart_reason"),
         ))
         created += 1
 
@@ -429,6 +507,7 @@ async def extract_listings_from_stored_message(
         "created": created,
         "dupes": dupes,
         "filtered_by_policy": len(auto_dropped),
+        "smart_filtered": len(smart_dropped),
         "no_url": no_url_dropped,
     }
     # Rewrite summary with authoritative counts (don't trust the LLM's self-reported numbers).
@@ -629,12 +708,15 @@ async def sync_account(
                     stored.extracted_listings = []
                     stored.filtered_listings = dropped or None
                     stored.processed = True
+                    kw_dropped = [d for d in (dropped or []) if not (d.get("reason") or "").startswith("smart filter:")]
+                    smart_dropped_ct = [d for d in (dropped or []) if (d.get("reason") or "").startswith("smart filter:")]
                     stored.extraction_meta = {
                         "llm_claimed": llm_claimed,
                         "kept": 0,
                         "created": 0,
                         "dupes": 0,
-                        "filtered_by_policy": len(dropped),
+                        "filtered_by_policy": len(kw_dropped),
+                        "smart_filtered": len(smart_dropped_ct),
                         "no_url": no_url,
                     }
                     stored.ai_summary = _reconcile_summary(summary, stored.extraction_meta)
@@ -663,10 +745,14 @@ async def sync_account(
                     role_title=entry["role_title"],
                     location=entry.get("location"),
                     status="new",
+                    smart_filter_verdict=entry.get("_smart_verdict"),
+                    smart_filter_reason=entry.get("_smart_reason"),
                 ))
                 created_for_this_email += 1
             if stored:
-                stored.extracted_listings = extracted
+                stored.extracted_listings = [
+                    {k: v for k, v in e.items() if not k.startswith("_")} for e in extracted
+                ]
                 stored.filtered_listings = dropped or None
                 stored.processed = True
                 stored.extraction_meta = {
@@ -674,7 +760,8 @@ async def sync_account(
                     "kept": len(extracted),
                     "created": created_for_this_email,
                     "dupes": dupes_for_this_email,
-                    "filtered_by_policy": len(dropped),
+                    "filtered_by_policy": len([d for d in (dropped or []) if not (d.get("reason") or "").startswith("smart filter:")]),
+                    "smart_filtered": len([d for d in (dropped or []) if (d.get("reason") or "").startswith("smart filter:")]),
                     "no_url": no_url,
                 }
                 stored.ai_summary = _reconcile_summary(summary, stored.extraction_meta)

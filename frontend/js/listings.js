@@ -249,8 +249,14 @@ async function loadInterviewPrepForPanel() {
 
 function renderCompanyResearchSection(l) {
   const company = l.company || '';
+  const safeCompany = escapeHtml(company);
+  const safeCompanyAttr = safeCompany.replace(/"/g, '&quot;');
+  const safeHint = escapeHtml(l.url || '').replace(/"/g, '&quot;');
   return `
-    <div class="dp-section-title">\u{1F3E2} About ${escapeHtml(company)}</div>
+    <div class="dp-section-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <span>\u{1F3E2} About ${safeCompany}</span>
+      <span id="dpTrackCompanyHost"></span>
+    </div>
     <div id="dpCompanyResearchBody" style="font-size:13px;color:var(--text2);line-height:1.7;font-weight:500">
       <div class="empty-state" style="padding:16px 10px">
         <div style="font-size:12px;color:var(--text3);font-weight:500">\u{23F3} Loading cached research...</div>
@@ -258,9 +264,38 @@ function renderCompanyResearchSection(l) {
     </div>`;
 }
 
+async function loadTrackCompanyButton(l) {
+  const host = document.getElementById('dpTrackCompanyHost');
+  if (!host || !l.company) return;
+  host.innerHTML = '<span style="font-size:11px;color:var(--text3);font-weight:500">\u{23F3}</span>';
+  try {
+    const all = await window.api.scanner.listCompanies();
+    const match = (all || []).find(c => (c.name || '').toLowerCase() === l.company.toLowerCase());
+    if (match) {
+      const aiOn = !!match.ai_monitor_enabled;
+      const label = aiOn ? '\u{2705} Tracked \u00b7 \u{2728} AI On' : '\u{2705} Tracked';
+      host.innerHTML = `<button class="btn btn-ghost btn-sm" disabled title="This company is already being tracked" style="font-size:11px">${label}</button>`;
+    } else {
+      host.innerHTML = trackCompanyButtonHTML({
+        id: `dp-${l.id}`,
+        name: l.company,
+        hintUrl: l.url || '',
+        alreadyTracked: false,
+      });
+    }
+  } catch (err) {
+    // Silent — scanner might not be accessible; don't block detail panel
+    host.innerHTML = '';
+  }
+}
+
 async function loadCompanyResearchForPanel(l) {
   const body = document.getElementById('dpCompanyResearchBody');
   if (!body || !l.company) return;
+
+  // Populate the Track-this-company button in the section header (fire & forget).
+  loadTrackCompanyButton(l).catch(() => {});
+
   try {
     const all = await window.api.companies.list();
     const match = (all || []).find(c => (c.name || '').toLowerCase() === l.company.toLowerCase());

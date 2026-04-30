@@ -69,6 +69,18 @@ class Profile(Base):
     auto_evaluate: Mapped[bool] = mapped_column(default=True)
     auto_generate_assets: Mapped[bool] = mapped_column(default=True)
 
+    # Smart title filter — opt-in LLM pass that classifies titles as yes/no/maybe
+    # before they reach the expensive full-evaluation step. When OFF (default),
+    # the deterministic keyword filter is the only gate.
+    smart_title_filter_enabled: Mapped[bool] = mapped_column(default=False)
+
+    # Google Custom Search API credentials (for AI Company Monitor).
+    # When set, the AI monitor uses Google's fresh index instead of the LLM's
+    # built-in web search, which often returns stale/filled positions.
+    # Free tier: 100 queries/day. Setup: https://programmablesearchengine.google.com
+    google_search_api_key_enc: Mapped[Optional[str]] = mapped_column(Text)
+    google_search_cx: Mapped[Optional[str]] = mapped_column(String(100))
+
     # Title filter for scanner (JSON list of strings)
     title_positive_keywords: Mapped[list] = mapped_column(
         JSON,

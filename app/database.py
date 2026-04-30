@@ -104,6 +104,9 @@ def _apply_simple_migrations() -> None:
         "job_alert_senders": "JSON",
         "ai_monitor_interval_hours": "INTEGER DEFAULT 24",
         "company_suggestions_refreshed_at": "DATETIME",
+        "smart_title_filter_enabled": "BOOLEAN DEFAULT 0",
+        "google_search_api_key_enc": "TEXT",
+        "google_search_cx": "VARCHAR(100)",
     })
     ensure_columns("listings", {
         "tailored_resume_md": "TEXT",
@@ -125,6 +128,8 @@ def _apply_simple_migrations() -> None:
         "evaluation_in_progress": "DATETIME",
         "chat_history": "JSON",
         "chat_edit_log": "JSON",
+        "smart_filter_verdict": "VARCHAR(10)",
+        "smart_filter_reason": "VARCHAR(200)",
     })
     ensure_columns("email_messages", {
         "ai_summary": "TEXT",

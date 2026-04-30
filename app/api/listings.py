@@ -716,7 +716,164 @@ async def evaluate(
     return _to_detail(listing)
 
 
-# ------------------------- Pass on / Reconsider -------------------------
+# ------------------------- Batch evaluation -------------------------
+
+
+class BatchEvaluateRequest(BaseModel):
+    """Kick off evaluation across a set of unevaluated listings.
+
+    mode:
+      "all"         — every listing with score IS NULL (respects `ids` filter if provided)
+      "confident"   — only smart_filter_verdict == "yes" (or null if filter was off)
+      "maybe_only"  — only smart_filter_verdict == "maybe"
+      "keyword_top" — top N by rough keyword overlap with target_roles (for smart-OFF path)
+    """
+    mode: str = Field(default="all")
+    ids: Optional[list[int]] = None
+    limit: Optional[int] = None  # cap on how many to evaluate this round
+    concurrency: int = Field(default=4, ge=1, le=8)
+
+
+class BatchEvaluateResponse(BaseModel):
+    requested: int
+    evaluated: int
+    failed: int
+    skipped: int
+    errors: list[dict]
+
+
+def _keyword_rank(listing: Listing, target_roles: list[str]) -> int:
+    """Cheap rank for the 'keyword_top' mode — count how many target-role tokens
+    appear in the listing's role_title (case-insensitive). Ties broken by recency.
+    """
+    if not target_roles:
+        return 0
+    title = (listing.role_title or "").lower()
+    score = 0
+    for role in target_roles:
+        for tok in str(role).lower().split():
+            if len(tok) >= 3 and tok in title:
+                score += 1
+    return score
+
+
+@router.post("/batch-evaluate", response_model=BatchEvaluateResponse)
+async def batch_evaluate(
+    data: BatchEvaluateRequest,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+):
+    """Evaluate a batch of listings in parallel (bounded by semaphore).
+
+    Always filtered to `score IS NULL` to avoid silently re-running evaluations.
+    The client picks which cohort to target via `mode`.
+    """
+    import asyncio
+    if not profile.llm_api_key_enc:
+        raise HTTPException(status_code=400, detail="No LLM API key configured")
+
+    mode = (data.mode or "all").strip().lower()
+    if mode not in {"all", "confident", "maybe_only", "keyword_top"}:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid mode '{mode}'. Must be one of: all, confident, maybe_only, keyword_top",
+        )
+
+    q = (
+        db.query(Listing)
+        .filter(Listing.profile_id == profile.id, Listing.score.is_(None))
+        .filter(Listing.status.in_(["new", "evaluated"]))
+    )
+    if data.ids:
+        q = q.filter(Listing.id.in_(data.ids))
+    if mode == "confident":
+        q = q.filter(Listing.smart_filter_verdict == "yes")
+    elif mode == "maybe_only":
+        q = q.filter(Listing.smart_filter_verdict == "maybe")
+
+    candidates = q.all()
+
+    # "keyword_top" is a post-query rank — reuse the profile's target_roles
+    if mode == "keyword_top":
+        pd = profile.profile_data or {}
+        target_roles = pd.get("target_roles") or []
+        if isinstance(target_roles, str):
+            target_roles = [target_roles]
+        candidates.sort(
+            key=lambda l: (_keyword_rank(l, target_roles), l.created_at),
+            reverse=True,
+        )
+        # Default top 10 for this mode if caller didn't specify a limit
+        candidates = candidates[: (data.limit or 10)]
+    elif data.limit:
+        candidates = candidates[: data.limit]
+
+    requested = len(candidates)
+    if requested == 0:
+        return BatchEvaluateResponse(requested=0, evaluated=0, failed=0, skipped=0, errors=[])
+
+    sem = asyncio.Semaphore(data.concurrency)
+    evaluated = 0
+    failed = 0
+    skipped = 0
+    errors: list[dict] = []
+
+    async def _run_one(listing: Listing):
+        nonlocal evaluated, failed, skipped
+        async with sem:
+            # Check the concurrency guard — skip listings already being evaluated
+            lock = listing.evaluation_in_progress
+            if lock is not None and (datetime.utcnow() - lock) < timedelta(minutes=3):
+                skipped += 1
+                return
+            try:
+                await evaluate_listing(db, profile, listing)
+                evaluated += 1
+            except Exception as exc:
+                failed += 1
+                errors.append({"listing_id": listing.id, "error": str(exc)[:200]})
+
+    await asyncio.gather(*[_run_one(l) for l in candidates], return_exceptions=True)
+
+    return BatchEvaluateResponse(
+        requested=requested,
+        evaluated=evaluated,
+        failed=failed,
+        skipped=skipped,
+        errors=errors[:20],  # cap payload size
+    )
+
+
+class BatchEvalCohortStats(BaseModel):
+    unevaluated_total: int
+    confident: int  # verdict == "yes"
+    maybe: int      # verdict == "maybe"
+    no_verdict: int  # filter wasn't run (legacy or off)
+    smart_filter_enabled: bool
+
+
+@router.get("/batch-evaluate/cohort", response_model=BatchEvalCohortStats)
+def batch_evaluate_cohort(
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+):
+    """Return counts for each cohort so the UI can render the adaptive banner."""
+    base = (
+        db.query(Listing)
+        .filter(Listing.profile_id == profile.id, Listing.score.is_(None))
+        .filter(Listing.status.in_(["new", "evaluated"]))
+    )
+    total = base.count()
+    confident = base.filter(Listing.smart_filter_verdict == "yes").count()
+    maybe = base.filter(Listing.smart_filter_verdict == "maybe").count()
+    no_verdict = base.filter(Listing.smart_filter_verdict.is_(None)).count()
+    return BatchEvalCohortStats(
+        unevaluated_total=total,
+        confident=confident,
+        maybe=maybe,
+        no_verdict=no_verdict,
+        smart_filter_enabled=bool(getattr(profile, "smart_title_filter_enabled", False)),
+    )
 
 
 VALID_PASS_REASONS = {

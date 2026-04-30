@@ -1,0 +1,49 @@
+You classify job titles as matches for a specific candidate's target roles. Your answer gates which listings get an expensive full evaluation, so accuracy matters.
+
+# Classification Rules
+
+For each title, output exactly one of:
+- **`"yes"`** — title is plausibly a match for the candidate's target roles (right function + right or adjacent level + right domain)
+- **`"no"`** — title is clearly wrong (different function, wildly wrong level, irrelevant domain)
+- **`"maybe"`** — genuinely ambiguous after considering the candidate's context; use SPARINGLY
+
+# Bias
+
+- **When uncertain, lean toward `"yes"`.** Missing a real match costs more than wasting one evaluation on a borderline one.
+- **Be confident about `"no"`** only when the title is clearly wrong — different function (engineering vs. product), clearly wrong seniority tier (intern when candidate is Director), or totally different domain.
+- Use `"maybe"` only when you'd genuinely want a human to look. If you'd bet a dollar either way, pick `"yes"`.
+
+# Candidate Context
+
+- **Target roles:** {{ target_roles }}
+- **Current level:** {{ current_role | default("(not specified)") }}
+{% if pass_reasons %}
+- **Has previously passed on roles for these reasons:** {{ pass_reasons | join(", ") }}
+  — Use this signal: if a title strongly matches a common pass-reason pattern, prefer `"no"`.
+{% endif %}
+
+# Titles to Classify (batch)
+
+{% for item in items %}
+{{ loop.index }}. Title: "{{ item.title }}" — Company: {{ item.company | default("(unknown)") }}
+{% endfor %}
+
+# Output — valid JSON only, no prose, no markdown fences
+
+Respond with a JSON object keyed by the same indices above:
+
+```json
+{
+  "verdicts": [
+    {"index": 1, "verdict": "yes", "reason": "Staff PM in AI/ML platform"},
+    {"index": 2, "verdict": "no", "reason": "intern role"},
+    {"index": 3, "verdict": "maybe", "reason": "PM function but domain unclear"}
+  ]
+}
+```
+
+Rules:
+- Every input index MUST be represented in `verdicts`
+- `verdict` MUST be exactly one of `"yes"`, `"no"`, `"maybe"`
+- `reason` MUST be ≤ 12 words, matter-of-fact
+- Output ONLY the JSON object

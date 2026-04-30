@@ -70,6 +70,37 @@ def canonical_url_key(url: str) -> str:
     return (m.group(1) if m else url).rstrip("/").lower()
 
 
+# --- URL normalization --------------------------------------------------------
+
+# Rewrite known platform URLs to their canonical, working form.
+# The LLM often returns localized or www-prefixed variants that 404.
+_URL_NORMALIZERS = [
+    # amazon.jobs: rewrite any locale prefix to /en/
+    # e.g. https://www.amazon.jobs/pt/jobs/3194369/... → https://amazon.jobs/en/jobs/3194369/...
+    (re.compile(r"https?://(?:www\.)?amazon\.jobs(?:/[a-z]{2}(?:-[a-z]{2})?)?/jobs/(\d+)(?:/[^?#]*)?", re.I),
+     lambda m: f"https://amazon.jobs/en/jobs/{m.group(1)}"),
+    # Microsoft careers: normalize locale
+    (re.compile(r"https?://jobs\.careers\.microsoft\.com/[^/]+/[^/]+/job/(\d+)(?:/[^?#]*)?", re.I),
+     lambda m: f"https://jobs.careers.microsoft.com/us/en/job/{m.group(1)}"),
+]
+
+
+def normalize_listing_url(url: str) -> str:
+    """Rewrite a job URL to its canonical, user-clickable form.
+
+    Returns the original URL unchanged if no normalizer matches.
+    """
+    if not url:
+        return url
+    for pat, rewriter in _URL_NORMALIZERS:
+        m = pat.match(url.strip())
+        if m:
+            return rewriter(m)
+    # Strip tracking params but keep the URL otherwise
+    m2 = re.match(r"(https?://[^?#]+)", url.strip())
+    return (m2.group(1) if m2 else url).rstrip("/")
+
+
 # --- Web search call ----------------------------------------------------------
 
 def _run_queries_prompt(queries: list[dict], careers_site: str) -> str:
@@ -81,6 +112,12 @@ def _run_queries_prompt(queries: list[dict], careers_site: str) -> str:
     lines = [
         "Run the following web searches using your web-search tool.",
         "Return ALL results you find, not just obvious matches — filtering happens downstream.",
+        "",
+        "CRITICAL — RECENCY: Only return job listings that appear to be CURRENTLY ACTIVE.",
+        "If a search result page says 'this job is no longer available', 'position filled',",
+        "or redirects to a generic search page, do NOT include it. Prefer results with",
+        "recent posting dates. If you cannot verify a listing is still live, include it",
+        "but add '\"possibly_stale\": true' to the entry.",
         "",
         "For each result, report: company, role_title, url, location (if visible in",
         "the snippet), and which source_query surfaced it. Prefer the canonical",
@@ -127,10 +164,188 @@ async def _execute_query_plan(
     company: TrackedCompany,
     plan: dict,
 ) -> list[SearchHit]:
-    """Single LLM round-trip that runs all queries in the plan via web search."""
+    """Execute the query plan — tries Google Custom Search first (fresh index),
+    falls back to LLM web search if Google credentials aren't configured.
+
+    When Google is used, the raw search results are passed to the LLM for
+    structuring (extract company, role_title, url, location from snippets).
+    This gives us Google's fresh index + LLM's understanding.
+    """
     queries = plan.get("queries") or []
     if not queries:
         return []
+
+    # Check if Google Custom Search is configured
+    from app.services.secrets import decrypt
+    google_key_enc = getattr(profile, "google_search_api_key_enc", None)
+    google_cx = getattr(profile, "google_search_cx", None)
+
+    if google_key_enc and google_cx:
+        try:
+            google_key = decrypt(google_key_enc)
+            return await _execute_via_google(db, profile, company, plan, google_key, google_cx)
+        except Exception as exc:
+            logger.warning(
+                f"Google search failed for {company.name}, falling back to LLM search: {exc}"
+            )
+            # Fall through to LLM search
+
+    return await _execute_via_llm_search(db, profile, company, plan)
+
+
+async def _execute_via_google(
+    db: Session,
+    profile: Profile,
+    company: TrackedCompany,
+    plan: dict,
+    google_key: str,
+    google_cx: str,
+) -> list[SearchHit]:
+    """Google Custom Search → LLM structuring pipeline.
+
+    1. Run each query via Google CSE (parallel, fresh results)
+    2. Collect all raw results (title, url, snippet)
+    3. Pass them to the LLM to extract structured fields
+    4. Dedupe by canonical URL key
+    """
+    from app.services.google_search import google_search_multi
+
+    queries = plan.get("queries") or []
+    query_strings = [q["q"] for q in queries if q.get("q")]
+
+    # Step 1: Google search (parallel)
+    raw_results = await google_search_multi(google_key, google_cx, query_strings)
+
+    # Flatten into a single list with source_query tags
+    all_results: list[dict] = []
+    for query_str, results in raw_results:
+        for r in results:
+            if not r.url:
+                continue
+            all_results.append({
+                "title": r.title,
+                "url": r.url,
+                "snippet": r.snippet,
+                "source_query": query_str,
+            })
+
+    if not all_results:
+        logger.info(f"Google search returned 0 results for {company.name}")
+        return []
+
+    logger.info(f"Google search returned {len(all_results)} raw results for {company.name}")
+
+    # Step 2: LLM structuring — extract company, role_title, url, location
+    prompt_lines = [
+        "I have raw Google search results for job listings. Extract structured data from each.",
+        "",
+        f"Company being searched: {company.name}",
+        f"Careers site: {plan.get('careers_site', '(unknown)')}",
+        "",
+        "For each result, extract: company, role_title, url, location (if visible).",
+        "Only include results that are actual job postings (not blog posts, news, etc.).",
+        "Return a JSON object with shape: {\"listings\": [{\"company\": ..., \"role_title\": ..., \"url\": ..., \"location\": ..., \"source_query\": ...}]}",
+        "",
+        "Raw search results:",
+    ]
+    for i, r in enumerate(all_results, 1):
+        prompt_lines.append(f"  {i}. Title: {r['title']}")
+        prompt_lines.append(f"     URL: {r['url']}")
+        prompt_lines.append(f"     Snippet: {r['snippet'][:300]}")
+        prompt_lines.append(f"     Source query: {r['source_query']}")
+        prompt_lines.append("")
+
+    prompt = "\n".join(prompt_lines)
+    provider = get_provider(profile)
+
+    response = await provider.complete(
+        system=(
+            "You extract structured job listing data from raw search results. "
+            "Output a single JSON object. Do NOT invent or modify URLs — use "
+            "exactly the URLs from the search results. Only include actual job "
+            "postings, not news articles or blog posts."
+        ),
+        user=prompt,
+        max_tokens=4000,
+        temperature=0.1,
+    )
+    log_usage(db, profile.id, "ai_monitor_google_parse", response)
+
+    try:
+        parsed = _extract_json(response.text)
+    except Exception as exc:
+        logger.warning(f"Google result parsing failed for {company.name}: {exc}")
+        # Fall back to raw results — use title as role_title directly
+        return _raw_results_to_hits(all_results, company)
+
+    raw = parsed.get("listings") if isinstance(parsed, dict) else parsed
+    if not isinstance(raw, list):
+        return _raw_results_to_hits(all_results, company)
+
+    return _parse_hits(raw, company)
+
+
+def _raw_results_to_hits(results: list[dict], company: TrackedCompany) -> list[SearchHit]:
+    """Fallback: convert raw Google results directly to SearchHits without LLM parsing."""
+    hits: list[SearchHit] = []
+    seen_keys: set[str] = set()
+    for r in results:
+        url = normalize_listing_url(r.get("url") or "")
+        title = r.get("title") or ""
+        if not url or not title:
+            continue
+        # Strip common suffixes like " - Job ID: 12345" from Google titles
+        import re as _re
+        clean_title = _re.sub(r"\s*[-–—]\s*Job\s+ID:\s*\d+\s*$", "", title).strip()
+        key = canonical_url_key(url)
+        if not key or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        hits.append(SearchHit(
+            company=company.name,
+            role_title=clean_title,
+            url=url,
+            location=None,
+            source_query=r.get("source_query"),
+        ))
+    return hits
+
+
+def _parse_hits(raw: list, company: TrackedCompany) -> list[SearchHit]:
+    """Parse LLM-structured results into SearchHits with dedup."""
+    hits: list[SearchHit] = []
+    seen_keys: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        url = (item.get("url") or "").strip()
+        title = (item.get("role_title") or "").strip()
+        company_name = (item.get("company") or company.name).strip()
+        if not url or not title:
+            continue
+        url = normalize_listing_url(url)
+        key = canonical_url_key(url)
+        if not key or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        hits.append(SearchHit(
+            company=company_name,
+            role_title=title,
+            url=url,
+            location=(item.get("location") or None),
+            source_query=(item.get("source_query") or None),
+        ))
+    return hits
+
+
+async def _execute_via_llm_search(
+    db: Session,
+    profile: Profile,
+    company: TrackedCompany,
+    plan: dict,
+) -> list[SearchHit]:
+    """Original LLM web search path — used as fallback when Google isn't configured."""
+    queries = plan.get("queries") or []
     prompt = _run_queries_prompt(queries, plan.get("careers_site", ""))
     provider = get_provider(profile)
 
@@ -157,28 +372,60 @@ async def _execute_query_plan(
     if not isinstance(raw, list):
         return []
 
-    hits: list[SearchHit] = []
-    seen_keys: set[str] = set()
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        url = (item.get("url") or "").strip()
-        title = (item.get("role_title") or "").strip()
-        company_name = (item.get("company") or company.name).strip()
-        if not url or not title:
-            continue
-        key = canonical_url_key(url)
-        if not key or key in seen_keys:
-            continue
-        seen_keys.add(key)
-        hits.append(SearchHit(
-            company=company_name,
-            role_title=title,
-            url=url,
-            location=(item.get("location") or None),
-            source_query=(item.get("source_query") or None),
-        ))
+    hits = _parse_hits(raw, company)
+
+    # Liveness check — quick HEAD requests to drop dead/filled listings.
+    # The LLM's search index often lags by weeks, returning positions that
+    # have since been filled. A HEAD request catches 404/410/redirect-to-search.
+    if hits:
+        hits = await _filter_dead_urls(hits)
+
     return hits
+
+
+async def _filter_dead_urls(hits: list[SearchHit]) -> list[SearchHit]:
+    """Parallel HEAD requests to verify URLs are still live.
+
+    Drops hits that return 404, 410, or redirect to a generic search/home page.
+    Keeps hits where the check fails (timeout, connection error) — fail-open.
+    """
+    import httpx
+
+    async def _check(hit: SearchHit) -> tuple[SearchHit, bool]:
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True, timeout=8.0,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; LaunchPad/1.0)"},
+            ) as client:
+                resp = await client.head(hit.url)
+                # 404/410 = definitely dead
+                if resp.status_code in (404, 410):
+                    logger.info(f"Liveness check: {hit.url} → {resp.status_code} (dead)")
+                    return hit, False
+                # Some ATS platforms redirect filled jobs to the main search page.
+                # Detect by checking if the final URL lost the job-specific path.
+                final = str(resp.url)
+                if resp.status_code in (301, 302, 303, 307, 308) or final != hit.url:
+                    # If redirected to a page that no longer contains the job ID,
+                    # it's likely a "this job is no longer available" redirect.
+                    job_key = canonical_url_key(hit.url)
+                    final_key = canonical_url_key(final)
+                    if job_key and final_key and job_key != final_key:
+                        # The redirect went somewhere else entirely
+                        logger.info(f"Liveness check: {hit.url} → redirected to {final} (likely dead)")
+                        return hit, False
+                return hit, True
+        except Exception as exc:
+            # Fail-open: network error, timeout, etc. — keep the hit
+            logger.debug(f"Liveness check failed for {hit.url}: {exc}")
+            return hit, True
+
+    results = await asyncio.gather(*[_check(h) for h in hits])
+    alive = [hit for hit, live in results if live]
+    dead_count = len(hits) - len(alive)
+    if dead_count:
+        logger.info(f"Liveness check: {dead_count}/{len(hits)} URLs appear dead/filled, dropped")
+    return alive
 
 
 # --- Main entry point ---------------------------------------------------------
@@ -264,6 +511,49 @@ async def run_ai_monitor_for_company(
                     "source_query": h.source_query,
                     "reason": reason,
                 })
+
+        # Optional smart-title-filter pass — profile opt-in. Runs after the
+        # cheap keyword filter so we never spend LLM cost on already-rejected
+        # titles. "no" verdicts join the filtered_listings array with a
+        # "smart filter:" prefix so the user can still "Add anyway" from
+        # the run detail modal.
+        smart_on = bool(getattr(profile, "smart_title_filter_enabled", False))
+        smart_verdicts: dict[int, "object"] = {}
+        if smart_on and passes and profile.llm_api_key_enc:
+            try:
+                from app.services.smart_title_filter import classify_titles
+                items = [
+                    {"title": h.role_title, "company": h.company}
+                    for h in passes
+                ]
+                smart_verdicts = await classify_titles(db, profile, items)
+            except Exception as exc:
+                logger.warning(
+                    f"Smart filter pass failed for {company.name}: {exc}"
+                )
+                smart_verdicts = {}
+        # Attach verdict-survival info to hits so we can persist verdict on the
+        # Listing row at create time below.
+        smart_attrs_by_idx: dict[int, tuple[Optional[str], Optional[str]]] = {}
+        if smart_on and smart_verdicts:
+            kept_passes: list[SearchHit] = []
+            for idx, h in enumerate(passes):
+                v = smart_verdicts.get(idx)
+                if v is not None and v.verdict == "no":
+                    filtered.append({
+                        "company": h.company,
+                        "role_title": h.role_title,
+                        "url": h.url,
+                        "location": h.location,
+                        "source_query": h.source_query,
+                        "reason": f"smart filter: {v.reason or 'off-target'}",
+                    })
+                    continue
+                if v is not None:
+                    smart_attrs_by_idx[len(kept_passes)] = (v.verdict, v.reason)
+                kept_passes.append(h)
+            passes = kept_passes
+
         run.filtered_listings = filtered
         run.filtered_count = len(filtered)
 
@@ -294,6 +584,16 @@ async def run_ai_monitor_for_company(
         # Create listings
         created_listings: list[Listing] = []
         for h in kept:
+            # Recover the smart verdict by locating this hit back in `passes`.
+            # passes and smart_attrs_by_idx were aligned BEFORE the DB-dedup
+            # step, so we look up by URL to get the right attrs.
+            sv_verdict: Optional[str] = None
+            sv_reason: Optional[str] = None
+            if smart_attrs_by_idx:
+                for pi, ph in enumerate(passes):
+                    if ph.url == h.url and pi in smart_attrs_by_idx:
+                        sv_verdict, sv_reason = smart_attrs_by_idx[pi]
+                        break
             listing = Listing(
                 profile_id=profile.id,
                 url=h.url,
@@ -304,6 +604,8 @@ async def run_ai_monitor_for_company(
                 location=h.location,
                 job_type=_detect_job_type(h.location),
                 status="new",
+                smart_filter_verdict=sv_verdict,
+                smart_filter_reason=sv_reason,
             )
             db.add(listing)
             created_listings.append(listing)

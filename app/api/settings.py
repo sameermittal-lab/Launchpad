@@ -58,6 +58,13 @@ class SettingsResponse(BaseModel):
     # Trusted job-alert senders (priority list)
     job_alert_senders: list[str]
 
+    # Smart title filter (opt-in LLM pass yes/no/maybe)
+    smart_title_filter_enabled: bool
+
+    # Google Custom Search (for AI Monitor — fresh results instead of stale LLM search)
+    has_google_search_key: bool
+    google_search_cx: Optional[str]
+
 
 class SettingsUpdate(BaseModel):
     # Profile
@@ -101,6 +108,13 @@ class SettingsUpdate(BaseModel):
     # Trusted job-alert senders (priority list)
     job_alert_senders: Optional[list[str]] = None
 
+    # Smart title filter (opt-in LLM pass yes/no/maybe)
+    smart_title_filter_enabled: Optional[bool] = None
+
+    # Google Custom Search (for AI Monitor)
+    google_search_api_key: Optional[str] = None  # plaintext — will be encrypted
+    google_search_cx: Optional[str] = None
+
 
 class TestConnectionRequest(BaseModel):
     provider: str
@@ -133,6 +147,9 @@ def get_settings(profile: Profile = Depends(get_current_profile)):
         scan_interval_hours=profile.scan_interval_hours,
         ai_monitor_interval_hours=int(getattr(profile, "ai_monitor_interval_hours", 24) or 24),
         job_alert_senders=list(getattr(profile, "job_alert_senders", []) or []),
+        smart_title_filter_enabled=bool(getattr(profile, "smart_title_filter_enabled", False)),
+        has_google_search_key=bool(getattr(profile, "google_search_api_key_enc", None)),
+        google_search_cx=getattr(profile, "google_search_cx", None),
     )
 
 
@@ -185,6 +202,14 @@ def update_settings(
             profile.llm_api_key_enc = encrypt(new_key)
         else:
             profile.llm_api_key_enc = None
+
+    # Google Search API key — same encryption pattern
+    if "google_search_api_key" in update_dict:
+        gkey = update_dict.pop("google_search_api_key")
+        if gkey:
+            profile.google_search_api_key_enc = encrypt(gkey)
+        else:
+            profile.google_search_api_key_enc = None
 
     # Weights: validate + normalize
     if "scoring_weights" in update_dict and update_dict["scoring_weights"] is not None:
@@ -245,6 +270,9 @@ def update_settings(
         scan_interval_hours=profile.scan_interval_hours,
         ai_monitor_interval_hours=int(getattr(profile, "ai_monitor_interval_hours", 24) or 24),
         job_alert_senders=list(getattr(profile, "job_alert_senders", []) or []),
+        smart_title_filter_enabled=bool(getattr(profile, "smart_title_filter_enabled", False)),
+        has_google_search_key=bool(getattr(profile, "google_search_api_key_enc", None)),
+        google_search_cx=getattr(profile, "google_search_cx", None),
     )
 
 

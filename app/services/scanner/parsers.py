@@ -44,6 +44,9 @@ def detect_api(careers_url: str, api_override: Optional[str] = None) -> Optional
         if "lever.co" in api_override:
             return APIEndpoint("lever", api_override)
         if "myworkdayjobs.com" in api_override or "myworkdaysite.com" in api_override:
+            # If it's already a CXS API URL, use it directly
+            if "/wday/cxs/" in api_override:
+                return APIEndpoint("workday", api_override)
             return _detect_workday(api_override)
 
     if not careers_url:

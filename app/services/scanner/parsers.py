@@ -43,9 +43,17 @@ def detect_api(careers_url: str, api_override: Optional[str] = None) -> Optional
             return APIEndpoint("ashby", api_override)
         if "lever.co" in api_override:
             return APIEndpoint("lever", api_override)
+        if "myworkdayjobs.com" in api_override or "myworkdaysite.com" in api_override:
+            return _detect_workday(api_override)
 
     if not careers_url:
         return None
+
+    # Workday: {tenant}.wd{N}.myworkdayjobs.com/{locale}/{site}
+    # or jobs.myworkdaysite.com/recruiting/{tenant}/{site}
+    wd = _detect_workday(careers_url)
+    if wd:
+        return wd
 
     # Ashby: https://jobs.ashbyhq.com/{slug}
     m = re.search(r"jobs\.ashbyhq\.com/([^/?#]+)", careers_url)
@@ -138,6 +146,138 @@ PARSERS = {
     "lever": parse_lever,
 }
 
+# Workday is added after its parser function is defined (below)
+
+
+def _detect_workday(url: str) -> Optional[APIEndpoint]:
+    """Detect Workday careers URL and build the CXS API endpoint.
+
+    Workday URL patterns:
+      - https://{tenant}.wd{N}.myworkdayjobs.com/{locale}/{site}
+      - https://{tenant}.wd{N}.myworkdayjobs.com/{site}
+      - https://jobs.myworkdaysite.com/recruiting/{tenant}/{site}
+    """
+    # Pattern 1: {tenant}.wd{N}.myworkdayjobs.com
+    m = re.search(
+        r"([\w-]+)\.(wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?([^/?#]+)",
+        url,
+    )
+    if m:
+        tenant, wd_server, site = m.group(1), m.group(2), m.group(3)
+        api_url = f"https://{tenant}.{wd_server}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+        return APIEndpoint("workday", api_url)
+
+    # Pattern 2: jobs.myworkdaysite.com/recruiting/{tenant}/{site}
+    m = re.search(
+        r"jobs\.myworkdaysite\.com/recruiting/([\w-]+)/([\w-]+)",
+        url,
+    )
+    if m:
+        tenant, site = m.group(1), m.group(2)
+        # myworkdaysite uses wd5 by default
+        api_url = f"https://{tenant}.wd5.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+        return APIEndpoint("workday", api_url)
+
+    return None
+
+
+def parse_workday(data: dict, company_name: str) -> list[ScannedJob]:
+    """Parse Workday CXS API response into ScannedJob list."""
+    postings = data.get("jobPostings", [])
+    if not isinstance(postings, list):
+        return []
+
+    jobs: list[ScannedJob] = []
+    for p in postings:
+        title = (p.get("title") or "").strip()
+        external_path = p.get("externalPath") or ""
+        location = p.get("locationsText") or None
+
+        if not title:
+            continue
+
+        # Build the full URL from the API URL + externalPath
+        # The externalPath looks like "/en-US/job/Senior-PM/JR-12345"
+        # We need to reconstruct the full URL from the API base
+        url = p.get("externalUrl") or ""
+        if not url and external_path:
+            # We'll fix this up in fetch_company_jobs where we have the base URL
+            url = external_path
+
+        jobs.append(ScannedJob(
+            title=title,
+            url=url,
+            company=company_name,
+            location=location,
+        ))
+    return jobs
+
+
+async def _fetch_workday_jobs(api_url: str) -> dict:
+    """Fetch jobs from Workday CXS API (POST with JSON body, paginated)."""
+    all_postings: list[dict] = []
+    offset = 0
+    batch_size = 20
+
+    # Extract referer from API URL for the headers
+    # API: https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs
+    # Referer: https://{tenant}.{wd}.myworkdayjobs.com/en-US/{site}
+    m = re.match(r"(https://[\w-]+\.wd\d+\.myworkdayjobs\.com)/wday/cxs/[\w-]+/([\w-]+)/jobs", api_url)
+    if m:
+        referer = f"{m.group(1)}/en-US/{m.group(2)}"
+        base_url = f"{m.group(1)}/en-US/{m.group(2)}"
+    else:
+        referer = api_url
+        base_url = ""
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Accept-Language": "en-US",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": referer,
+    }
+
+    async with httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=FETCH_TIMEOUT,
+    ) as client:
+        while True:
+            payload = {
+                "appliedFacets": {},
+                "limit": batch_size,
+                "offset": offset,
+                "searchText": "",
+            }
+            resp = await client.post(api_url, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+            postings = data.get("jobPostings") or []
+            total = data.get("total", 0)
+
+            if not postings:
+                break
+
+            # Fix up URLs — convert externalPath to full URL
+            for p in postings:
+                ext_path = p.get("externalPath") or ""
+                if ext_path and not p.get("externalUrl"):
+                    p["externalUrl"] = f"{base_url}{ext_path}" if base_url else ext_path
+
+            all_postings.extend(postings)
+
+            # Safety cap: don't fetch more than 200 jobs per company
+            if len(all_postings) >= 200 or offset + batch_size >= total:
+                break
+            offset += batch_size
+
+    return {"jobPostings": all_postings, "total": total}
+
+
+# Register Workday parser now that it's defined
+PARSERS["workday"] = parse_workday
+
 
 async def fetch_company_jobs(
     company_name: str,
@@ -150,7 +290,11 @@ async def fetch_company_jobs(
         return [], f"No ATS API detected for {careers_url}"
 
     try:
-        data = await fetch_json(api.url)
+        # Workday uses a POST-based paginated API — special handling
+        if api.provider == "workday":
+            data = await _fetch_workday_jobs(api.url)
+        else:
+            data = await fetch_json(api.url)
     except Exception as exc:
         return [], f"API fetch failed: {exc}"
 

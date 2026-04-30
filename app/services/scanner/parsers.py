@@ -155,16 +155,40 @@ def _detect_workday(url: str) -> Optional[APIEndpoint]:
     Workday URL patterns:
       - https://{tenant}.wd{N}.myworkdayjobs.com/{locale}/{site}
       - https://{tenant}.wd{N}.myworkdayjobs.com/{site}
+      - https://{tenant}.wd{N}.myworkdayjobs.com (bare — needs site discovery)
       - https://jobs.myworkdaysite.com/recruiting/{tenant}/{site}
     """
-    # Pattern 1: {tenant}.wd{N}.myworkdayjobs.com
+    # Pattern 1: {tenant}.wd{N}.myworkdayjobs.com with site path
     m = re.search(
         r"([\w-]+)\.(wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?([^/?#]+)",
         url,
     )
     if m:
         tenant, wd_server, site = m.group(1), m.group(2), m.group(3)
-        api_url = f"https://{tenant}.{wd_server}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+        # Skip if the "site" is actually a Workday internal path
+        if site not in ("wday",):
+            api_url = f"https://{tenant}.{wd_server}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+            return APIEndpoint("workday", api_url)
+
+    # Pattern 1b: bare Workday URL without site path — try common slug patterns
+    m = re.match(r"https://([\w-]+)\.(wd\d+)\.myworkdayjobs\.com/?$", url.strip())
+    if m:
+        tenant, wd_server = m.group(1), m.group(2)
+        # Try common site slug patterns used by most companies
+        common_slugs = [
+            f"{tenant.upper()}ExternalCareerSite",
+            f"{tenant}ExternalCareerSite",
+            "External_Career_Site",
+            f"{tenant}_Careers",
+            f"{tenant.capitalize()}_Careers",
+            "external_experienced",
+            tenant,
+            tenant.upper(),
+        ]
+        # We can't do async here, so return the first common pattern.
+        # The actual validation happens at fetch time — if it 404s, the scan
+        # reports an error and the user can fix the URL.
+        api_url = f"https://{tenant}.{wd_server}.myworkdayjobs.com/wday/cxs/{tenant}/{common_slugs[0]}/jobs"
         return APIEndpoint("workday", api_url)
 
     # Pattern 2: jobs.myworkdaysite.com/recruiting/{tenant}/{site}
@@ -174,7 +198,6 @@ def _detect_workday(url: str) -> Optional[APIEndpoint]:
     )
     if m:
         tenant, site = m.group(1), m.group(2)
-        # myworkdaysite uses wd5 by default
         api_url = f"https://{tenant}.wd5.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
         return APIEndpoint("workday", api_url)
 
@@ -214,7 +237,11 @@ def parse_workday(data: dict, company_name: str) -> list[ScannedJob]:
 
 
 async def _fetch_workday_jobs(api_url: str) -> dict:
-    """Fetch jobs from Workday CXS API (POST with JSON body, paginated)."""
+    """Fetch jobs from Workday CXS API (POST with JSON body, paginated).
+
+    If the initial API URL returns an error, tries common site slug alternatives
+    (handles bare Workday URLs where the site slug was guessed).
+    """
     all_postings: list[dict] = []
     offset = 0
     batch_size = 20
@@ -222,11 +249,19 @@ async def _fetch_workday_jobs(api_url: str) -> dict:
     # Extract referer from API URL for the headers
     # API: https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs
     # Referer: https://{tenant}.{wd}.myworkdayjobs.com/en-US/{site}
-    m = re.match(r"(https://[\w-]+\.wd\d+\.myworkdayjobs\.com)/wday/cxs/[\w-]+/([\w-]+)/jobs", api_url)
+    m = re.match(r"(https://([\w-]+)\.(wd\d+)\.myworkdayjobs\.com)/wday/cxs/[\w-]+/([\w-]+)/jobs", api_url)
     if m:
-        referer = f"{m.group(1)}/en-US/{m.group(2)}"
-        base_url = f"{m.group(1)}/en-US/{m.group(2)}"
+        base_host = m.group(1)
+        tenant = m.group(2)
+        wd_server = m.group(3)
+        site = m.group(4)
+        referer = f"{base_host}/en-US/{site}"
+        base_url = f"{base_host}/en-US/{site}"
     else:
+        base_host = ""
+        tenant = ""
+        wd_server = ""
+        site = ""
         referer = api_url
         base_url = ""
 
@@ -242,35 +277,67 @@ async def _fetch_workday_jobs(api_url: str) -> dict:
         follow_redirects=True,
         timeout=FETCH_TIMEOUT,
     ) as client:
-        while True:
-            payload = {
-                "appliedFacets": {},
-                "limit": batch_size,
-                "offset": offset,
-                "searchText": "",
-            }
+        # Try the primary URL first; if it fails, try alternative site slugs
+        payload = {"appliedFacets": {}, "limit": batch_size, "offset": 0, "searchText": ""}
+        resp = await client.post(api_url, json=payload, headers=headers)
+
+        if resp.status_code != 200 or "jobPostings" not in resp.text:
+            # Try alternative site slugs
+            if base_host and tenant:
+                alt_slugs = [
+                    f"{tenant.upper()}ExternalCareerSite",
+                    f"{tenant.capitalize()}ExternalCareerSite",
+                    f"{tenant}ExternalCareerSite",
+                    "External_Career_Site",
+                    f"{tenant}_Careers",
+                    "external_experienced",
+                    tenant,
+                    tenant.upper(),
+                    tenant.capitalize(),
+                ]
+                for alt_site in alt_slugs:
+                    if alt_site == site:
+                        continue
+                    alt_url = f"{base_host}/wday/cxs/{tenant}/{alt_site}/jobs"
+                    alt_headers = {**headers, "Referer": f"{base_host}/en-US/{alt_site}"}
+                    try:
+                        resp = await client.post(alt_url, json=payload, headers=alt_headers)
+                        if resp.status_code == 200 and "jobPostings" in resp.text:
+                            api_url = alt_url
+                            site = alt_site
+                            base_url = f"{base_host}/en-US/{alt_site}"
+                            headers["Referer"] = f"{base_host}/en-US/{alt_site}"
+                            break
+                    except Exception:
+                        continue
+
+        resp.raise_for_status()
+        data = resp.json()
+        total = data.get("total", 0)
+        postings = data.get("jobPostings") or []
+
+        # Fix up URLs
+        for p in postings:
+            ext_path = p.get("externalPath") or ""
+            if ext_path and not p.get("externalUrl"):
+                p["externalUrl"] = f"{base_url}{ext_path}" if base_url else ext_path
+        all_postings.extend(postings)
+
+        # Paginate
+        while len(all_postings) < 200 and offset + batch_size < total:
+            offset += batch_size
+            payload["offset"] = offset
             resp = await client.post(api_url, json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
-
             postings = data.get("jobPostings") or []
-            total = data.get("total", 0)
-
             if not postings:
                 break
-
-            # Fix up URLs — convert externalPath to full URL
             for p in postings:
                 ext_path = p.get("externalPath") or ""
                 if ext_path and not p.get("externalUrl"):
                     p["externalUrl"] = f"{base_url}{ext_path}" if base_url else ext_path
-
             all_postings.extend(postings)
-
-            # Safety cap: don't fetch more than 200 jobs per company
-            if len(all_postings) >= 200 or offset + batch_size >= total:
-                break
-            offset += batch_size
 
     return {"jobPostings": all_postings, "total": total}
 

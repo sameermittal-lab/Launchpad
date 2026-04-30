@@ -84,6 +84,17 @@ async def scan_all_companies(
     if not companies:
         return ScanResult(0, 0, 0, 0, 0, [], [])
 
+    # Re-detect platform for any "custom" companies (picks up newly added parsers)
+    from app.services.scanner.parsers import detect_api
+    for c in companies:
+        if c.platform == "custom" or not c.platform:
+            api = detect_api(c.careers_url, c.api_url)
+            if api:
+                c.platform = api.provider
+                if not c.api_url:
+                    c.api_url = api.url
+    db.commit()
+
     # Fetch all companies in parallel
     tasks = [fetch_company_jobs(c.name, c.careers_url, c.api_url) for c in companies]
     results = await asyncio.gather(*tasks, return_exceptions=True)

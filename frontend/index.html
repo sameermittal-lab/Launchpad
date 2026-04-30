@@ -121,10 +121,11 @@
 
   <div class="sidebar-bottom">
     <button class="btn btn-ghost btn-sm" onclick="startTour()" style="width:100%;justify-content:center;margin-bottom:10px">&#x1F3AF; Take a Tour</button>
-    <div class="cost-tracker" id="costTracker">
+    <div class="cost-tracker" id="costTracker" style="position:relative;cursor:pointer" onmouseenter="showCostPopover()" onmouseleave="hideCostPopover()">
       <div class="cost-label">💸 This Month</div>
       <div class="cost-value">-</div>
       <div class="cost-detail">Loading…</div>
+      <div id="costPopover" style="display:none;position:absolute;bottom:100%;left:0;right:0;margin-bottom:8px;z-index:50"></div>
     </div>
     <div id="schedulerStatus" style="margin-top:10px;padding:8px 12px;background:var(--bg2);border-radius:var(--radius-sm);font-size:10px;font-weight:600;display:flex;align-items:center;gap:6px;color:var(--text3)">
       <span id="schedDot" style="width:6px;height:6px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>

@@ -403,11 +403,7 @@ function renderDashBody(stats, topMatches){
     <h3 style="font-size:16px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px">\u{1F525} Top Matches</h3>
     ${topMatches.length === 0
       ? `<div class="empty-state" style="padding:24px"><div class="es-desc">No matches scoring 4.0+ yet</div></div>`
-      : topMatches.map(j => jobCardHTML(j)).join('')}
-    <div id="dashCostBreakdown" style="margin-top:24px"></div>`;
-
-  // Load cost breakdowns async
-  loadCostBreakdowns();
+      : topMatches.map(j => jobCardHTML(j)).join('')}`;
 }
 
 function jobCardHTML(j){
@@ -6092,77 +6088,67 @@ function endTour() {
   _tourStep = 0;
 }
 
-// ========================= Cost Breakdowns (Dashboard) =========================
+// ========================= Cost Breakdowns (Sidebar Popover) =========================
 
-async function loadCostBreakdowns() {
-  const container = document.getElementById('dashCostBreakdown');
-  if (!container) return;
+let _costPopoverLoaded = false;
+
+async function showCostPopover() {
+  const popover = document.getElementById('costPopover');
+  if (!popover) return;
+  popover.style.display = 'block';
+
+  if (_costPopoverLoaded) return;
+  _costPopoverLoaded = true;
+
   try {
     const usage = await window.api.usage.summary();
     if (usage.all_time_calls === 0) {
-      container.innerHTML = '';
+      popover.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;box-shadow:var(--shadow-lg);font-size:11px;color:var(--text3)">No usage data yet</div>`;
       return;
     }
 
     const byFeature = usage.breakdown_by_feature || {};
     const byProvider = usage.breakdown_by_provider || {};
 
-    // Build feature rows (top 8)
-    const featureEntries = Object.entries(byFeature).slice(0, 8);
-    const maxFeatureCost = Math.max(...featureEntries.map(([,v]) => v.cost), 0.001);
+    const featureEntries = Object.entries(byFeature).slice(0, 6);
+    const maxCost = Math.max(...featureEntries.map(([,v]) => v.cost), 0.001);
     const featureRows = featureEntries.map(([name, data]) => {
-      const pct = Math.min(100, (data.cost / maxFeatureCost) * 100);
-      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-        <div style="width:140px;font-size:11px;font-weight:600;color:var(--text2);text-align:right;flex-shrink:0">${escapeHtml(name)}</div>
-        <div style="flex:1;background:var(--bg2);border-radius:4px;height:18px;overflow:hidden">
-          <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--primary),var(--primary2));border-radius:4px;min-width:2px"></div>
+      const pct = Math.min(100, (data.cost / maxCost) * 100);
+      return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <div style="width:100px;font-size:10px;font-weight:600;color:var(--text2);text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</div>
+        <div style="flex:1;background:var(--bg2);border-radius:3px;height:12px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--primary),var(--primary2));border-radius:3px;min-width:1px"></div>
         </div>
-        <div style="width:60px;font-size:11px;font-weight:700;color:var(--text);text-align:right">$${data.cost.toFixed(3)}</div>
-        <div style="width:40px;font-size:10px;color:var(--text3);text-align:right">${data.calls}</div>
+        <div style="width:45px;font-size:10px;font-weight:700;text-align:right">$${data.cost.toFixed(3)}</div>
       </div>`;
     }).join('');
 
-    // Build provider rows
     const providerEntries = Object.entries(byProvider);
-    const providerColors = { openai: 'var(--green)', anthropic: 'var(--orange)', google: 'var(--blue)', gemini: 'var(--blue)' };
-    const totalProviderCost = providerEntries.reduce((s, [,v]) => s + v.cost, 0) || 0.001;
-    const providerRows = providerEntries.map(([name, data]) => {
-      const pct = (data.cost / totalProviderCost) * 100;
+    const providerLabels = { openai: 'OpenAI', anthropic: 'Anthropic', google: 'Gemini' };
+    const providerColors = { openai: 'var(--green)', anthropic: 'var(--orange)', google: 'var(--blue)' };
+    const providerPills = providerEntries.map(([name, data]) => {
+      const label = providerLabels[name.toLowerCase()] || name;
       const color = providerColors[name.toLowerCase()] || 'var(--purple)';
-      const label = name === 'openai' ? 'OpenAI' : name === 'anthropic' ? 'Anthropic' : name === 'google' ? 'Gemini' : name;
-      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
-        <div style="width:80px;font-size:12px;font-weight:700;color:var(--text)">${escapeHtml(label)}</div>
-        <div style="flex:1;background:var(--bg2);border-radius:4px;height:20px;overflow:hidden">
-          <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;min-width:2px"></div>
-        </div>
-        <div style="width:60px;font-size:12px;font-weight:700;text-align:right">$${data.cost.toFixed(3)}</div>
-        <div style="width:50px;font-size:10px;color:var(--text3);text-align:right">${data.calls} calls</div>
-      </div>`;
-    }).join('');
+      return `<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:8px;background:${color}20;color:${color}">${escapeHtml(label)} $${data.cost.toFixed(3)}</span>`;
+    }).join(' ');
 
-    container.innerHTML = `
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
-          <div style="font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px">\u{1F4CA} Cost by Feature</div>
-          <div style="display:flex;gap:10px;margin-bottom:8px;font-size:10px;color:var(--text3);font-weight:600">
-            <div style="width:140px;text-align:right">FEATURE</div>
-            <div style="flex:1">COST</div>
-            <div style="width:60px;text-align:right">USD</div>
-            <div style="width:40px;text-align:right">CALLS</div>
-          </div>
-          ${featureRows || '<div style="font-size:12px;color:var(--text3)">No usage data yet</div>'}
+    popover.innerHTML = `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;box-shadow:var(--shadow-lg);width:280px">
+        <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px">Cost by Feature</div>
+        ${featureRows}
+        <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border)">
+          <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">By Provider</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${providerPills}</div>
         </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px">
-          <div style="font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:6px">\u{1F4B3} Cost by Provider</div>
-          ${providerRows || '<div style="font-size:12px;color:var(--text3)">No usage data yet</div>'}
-          <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;font-size:12px;font-weight:700">
-            <span>Total (all time)</span>
-            <span>$${usage.all_time_cost_usd.toFixed(3)} \u{00B7} ${usage.all_time_calls} calls</span>
-          </div>
-        </div>
+        <div style="margin-top:8px;font-size:10px;color:var(--text3);text-align:right">All time: $${usage.all_time_cost_usd.toFixed(3)} \u{00B7} ${usage.all_time_calls} calls</div>
       </div>`;
   } catch (err) {
-    console.warn('Cost breakdown load failed:', err);
-    container.innerHTML = '';
+    popover.innerHTML = '';
+    _costPopoverLoaded = false;
   }
+}
+
+function hideCostPopover() {
+  const popover = document.getElementById('costPopover');
+  if (popover) popover.style.display = 'none';
 }

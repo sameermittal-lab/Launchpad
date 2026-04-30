@@ -5900,17 +5900,56 @@ function showWelcomeWizard() {
 }
 
 
-// --- Feature Tour (tooltip-based walkthrough) ---
-// Triggered by "Take a Tour" button. Highlights key UI areas with a spotlight.
+// --- Feature Tour (navigating walkthrough) ---
+// Navigates to each page and highlights specific elements with tooltips.
+// Goes in-depth on settings, scanner, and key features.
 
 const TOUR_STEPS = [
-  { target: '.sidebar-nav .nav-item[data-page="dashboard"]', title: 'Dashboard', text: 'Your home base — see pipeline stats, recent activity, and quick actions at a glance.', position: 'right' },
-  { target: '.sidebar-nav .nav-item[data-page="pipeline"]', title: 'Pipeline Board', text: 'Kanban-style board showing all your listings organized by status: New → Evaluated → Applied → Interview → Offer.', position: 'right' },
-  { target: '.sidebar-nav .nav-item[data-page="scanner"]', title: 'Portal Scanner', text: 'Auto-discover jobs from company career pages. Supports Greenhouse, Ashby, Lever, and Workday. The AI Monitor uses web search to find listings beyond ATS.', position: 'right' },
-  { target: '.sidebar-nav .nav-item[data-page="gmail"]', title: 'Gmail Integration', text: 'Connect your Gmail to automatically extract job listings from Indeed, LinkedIn, and recruiter emails.', position: 'right' },
-  { target: '.sidebar-nav .nav-item[data-page="settings"]', title: 'Settings', text: 'Configure your LLM provider, title filters, scoring weights, Google Search, and more.', position: 'right' },
-  { target: '.topbar-search input', title: 'Global Search', text: 'Search across all listings by company name, role title, or keyword. Works on every page.', position: 'bottom' },
-  { target: '.topbar-actions', title: 'Quick Actions', text: 'Scan for new jobs or add a listing by pasting a URL — available from any page.', position: 'bottom' },
+  // Dashboard
+  { page: 'dashboard', target: '.stats-row', title: 'Dashboard Overview', text: 'Your command center. These cards show your pipeline at a glance — new listings, evaluated, applied, interviews, and your average match score.', position: 'bottom' },
+
+  // Pipeline
+  { page: 'pipeline', target: '.pipeline-board', title: 'Pipeline Board', text: 'Kanban-style board. Listings flow left to right: New → Evaluated → Applied → Interview → Offer. Click any card to see details, evaluate, tailor your resume, or generate a cover letter.', position: 'bottom', delay: 300 },
+
+  // All Listings
+  { page: 'listings', target: '#listingsTable', title: 'All Listings', text: 'Every listing in one sortable table. Click column headers to sort. Use the "Apply filter" button to retroactively clean up listings that no longer match your title keywords.', position: 'bottom', delay: 300 },
+
+  // Scanner
+  { page: 'scanner', target: '#scannerCompanies', title: 'Portal Scanner — Companies', text: 'Add companies you want to track. LaunchPad auto-detects their ATS platform (Greenhouse, Ashby, Lever, Workday) and scans for new jobs on a schedule.', position: 'bottom', delay: 300 },
+  { page: 'scanner', target: null, title: 'AI Company Monitor', text: 'For companies without a standard ATS, the AI Monitor uses web search (Google or LLM) to discover listings. It generates a custom query plan per company and runs it on a schedule. Toggle it per-company in the table.', position: 'center' },
+
+  // Gmail
+  { page: 'gmail', target: null, title: 'Gmail Integration', text: 'Connect your Gmail to auto-extract job listings from Indeed, LinkedIn, Glassdoor, and recruiter emails. LaunchPad classifies each email and pulls out structured listings with company, role, URL, and location.', position: 'center', delay: 300 },
+
+  // Resume
+  { page: 'resume', target: null, title: 'Resume Management', text: 'Upload your base resume PDF. LaunchPad parses it and uses it to tailor role-specific versions for each listing. You can also analyze your resume for improvement suggestions.', position: 'center', delay: 300 },
+
+  // Companies
+  { page: 'companies', target: null, title: 'Company Research', text: 'AI-powered research on every company in your pipeline. Culture, growth stage, tech stack, compensation data, and recent news — all gathered via web search and cached for 30 days.', position: 'center', delay: 300 },
+
+  // Interview Prep
+  { page: 'interview', target: null, title: 'Interview Prep', text: 'AI generates STAR stories from your resume — Situation, Task, Action, Result — tailored to common behavioral interview questions. Great for prep before calls.', position: 'center', delay: 300 },
+
+  // Settings — LLM
+  { page: 'settings', target: null, title: 'Settings — LLM Provider', text: 'Choose your LLM (OpenAI, Anthropic, or Google Gemini) and paste your API key. This powers all AI features: evaluation, resume tailoring, cover letters, company research, and the smart title filter.', position: 'center', delay: 400, scrollTo: '.scard:nth-child(1)' },
+
+  // Settings — Scoring
+  { page: 'settings', target: null, title: 'Settings — Scoring Weights', text: 'Customize how listings are scored across 8 dimensions: Role Match, Seniority, Skills, Compensation, Growth, S-Curve, Culture, and Location. Use presets (Balanced, Growth, Comp, Culture) or fine-tune each slider.', position: 'center', scrollTo: '.scard:nth-child(3)' },
+
+  // Settings — Scanner
+  { page: 'settings', target: null, title: 'Settings — Title Filter & Smart Filter', text: 'Positive keywords (must match at least one) and negative keywords (auto-reject). The Smart Title Filter adds an LLM pass that catches synonyms and drops obvious mismatches — costs ~$0.001 per title.', position: 'center', scrollTo: '#set-smart-title-filter' },
+
+  // Settings — Google Search
+  { page: 'settings', target: null, title: 'Settings — Google Search', text: 'Optional: connect Google Custom Search for the AI Monitor. Uses Google\'s fresh index instead of the LLM\'s built-in search (which can return stale/filled positions). Free tier: 100 queries/day.', position: 'center', scrollTo: '#set-google-search-key' },
+
+  // Settings — Trusted Senders
+  { page: 'settings', target: null, title: 'Settings — Trusted Senders', text: 'Emails from these senders skip the LLM classifier and go straight to listing extraction. Add your job alert sources (Indeed, LinkedIn, Glassdoor, etc.) to speed up Gmail processing.', position: 'center', scrollTo: '#sf-senders-tags' },
+
+  // Topbar
+  { page: null, target: '.topbar-search input', title: 'Global Search', text: 'Search across all listings by company, role, or keyword. Works on every page — just start typing.', position: 'bottom' },
+
+  // Done
+  { page: null, target: null, title: 'Tour Complete! \u{1F389}', text: 'You\'ve seen the key features. Start by adding a listing (paste a job URL) or set up the Portal Scanner to auto-discover jobs. You can restart this tour anytime from the sidebar.', position: 'center' },
 ];
 
 let _tourStep = 0;
@@ -5919,17 +5958,10 @@ let _tourOverlay = null;
 function startTour() {
   _tourStep = 0;
   closeSidebarIfMobile();
-  // On mobile, open sidebar first since most tour targets are there
-  if (window.innerWidth <= 768) {
-    const sidebar = document.getElementById('sidebar');
-    const backdrop = document.getElementById('sidebarBackdrop');
-    if (sidebar) sidebar.classList.add('open');
-    if (backdrop) backdrop.classList.add('open');
-  }
-  showTourStep();
+  _advanceTourStep();
 }
 
-function showTourStep() {
+async function _advanceTourStep() {
   // Clean up previous
   if (_tourOverlay) _tourOverlay.remove();
   document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
@@ -5940,49 +5972,78 @@ function showTourStep() {
   }
 
   const step = TOUR_STEPS[_tourStep];
-  const target = document.querySelector(step.target);
 
-  if (!target) {
-    // Skip missing targets
-    _tourStep++;
-    showTourStep();
-    return;
+  // Navigate to the page if specified and not already there
+  if (step.page) {
+    const currentPage = document.querySelector('.nav-item.active')?.dataset?.page;
+    if (currentPage !== step.page) {
+      showPage(step.page);
+    }
   }
 
-  // Highlight the target
-  target.classList.add('tour-highlight');
-  const rect = target.getBoundingClientRect();
+  // Wait for page to render
+  const delay = step.delay || 200;
+  await new Promise(r => setTimeout(r, delay));
+
+  // Scroll to a specific element if requested
+  if (step.scrollTo) {
+    const scrollTarget = document.querySelector(step.scrollTo);
+    if (scrollTarget) {
+      scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  // Find and highlight target
+  const target = step.target ? document.querySelector(step.target) : null;
+  if (target) {
+    target.classList.add('tour-highlight');
+    target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    await new Promise(r => setTimeout(r, 200));
+  }
 
   // Create tooltip
   _tourOverlay = document.createElement('div');
   _tourOverlay.id = 'tourTooltip';
-  _tourOverlay.style.cssText = `position:fixed;z-index:400;pointer-events:auto`;
+  _tourOverlay.style.cssText = 'position:fixed;z-index:400;pointer-events:auto';
 
-  // Position tooltip
-  let top, left;
-  if (step.position === 'right') {
-    top = rect.top + rect.height / 2 - 60;
-    left = rect.right + 12;
+  if (target && step.position !== 'center') {
+    // Position relative to target
+    const rect = target.getBoundingClientRect();
+    let top, left;
+    if (step.position === 'right') {
+      top = rect.top + rect.height / 2 - 60;
+      left = rect.right + 12;
+    } else if (step.position === 'left') {
+      top = rect.top + rect.height / 2 - 60;
+      left = rect.left - 300;
+    } else {
+      // bottom
+      top = rect.bottom + 12;
+      left = rect.left + rect.width / 2 - 150;
+    }
+    top = Math.max(8, Math.min(window.innerHeight - 220, top));
+    left = Math.max(8, Math.min(window.innerWidth - 320, left));
+    _tourOverlay.style.top = top + 'px';
+    _tourOverlay.style.left = left + 'px';
   } else {
-    top = rect.bottom + 12;
-    left = rect.left;
+    // Center on screen
+    _tourOverlay.style.top = '50%';
+    _tourOverlay.style.left = '50%';
+    _tourOverlay.style.transform = 'translate(-50%, -50%)';
   }
-  // Keep on screen
-  top = Math.max(8, Math.min(window.innerHeight - 200, top));
-  left = Math.max(8, Math.min(window.innerWidth - 320, left));
 
-  _tourOverlay.style.top = top + 'px';
-  _tourOverlay.style.left = left + 'px';
-
+  const isLast = _tourStep >= TOUR_STEPS.length - 1;
   _tourOverlay.innerHTML = `
-    <div style="background:var(--surface);border:1.5px solid var(--primary);border-radius:var(--radius-sm);padding:16px;width:280px;box-shadow:var(--shadow-xl)">
-      <div style="font-size:14px;font-weight:700;margin-bottom:6px">${step.title}</div>
-      <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:12px">${step.text}</div>
+    <div style="background:var(--surface);border:1.5px solid var(--primary);border-radius:var(--radius-sm);padding:18px;width:320px;box-shadow:var(--shadow-xl)">
+      <div style="font-size:15px;font-weight:700;margin-bottom:8px">${step.title}</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:14px">${step.text}</div>
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:11px;color:var(--text3)">${_tourStep + 1} of ${TOUR_STEPS.length}</span>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-ghost btn-sm" onclick="endTour()">End tour</button>
-          <button class="btn btn-primary btn-sm" onclick="nextTourStep()">${_tourStep < TOUR_STEPS.length - 1 ? 'Next \u{2192}' : 'Done \u{2705}'}</button>
+          ${_tourStep > 0 ? '<button class="btn btn-ghost btn-sm" onclick="prevTourStep()">\u{2190} Back</button>' : ''}
+          <button class="btn btn-ghost btn-sm" onclick="endTour()">End</button>
+          <button class="btn btn-primary btn-sm" onclick="nextTourStep()">${isLast ? 'Done \u{2705}' : 'Next \u{2192}'}</button>
         </div>
       </div>
     </div>`;
@@ -5992,7 +6053,12 @@ function showTourStep() {
 
 function nextTourStep() {
   _tourStep++;
-  showTourStep();
+  _advanceTourStep();
+}
+
+function prevTourStep() {
+  _tourStep = Math.max(0, _tourStep - 1);
+  _advanceTourStep();
 }
 
 function endTour() {

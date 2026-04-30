@@ -5965,7 +5965,7 @@ const TOUR_STEPS = [
   { page: 'settings', target: null, title: 'Settings — Title Filter & Smart Filter', text: 'Positive keywords (must match at least one) and negative keywords (auto-reject). The Smart Title Filter adds an LLM pass that catches synonyms and drops obvious mismatches — costs ~$0.001 per title.', position: 'center', scrollTo: '#set-smart-title-filter' },
 
   // Settings — Google Search
-  { page: 'settings', target: null, title: 'Settings — Google Search', text: 'Optional: connect Google Custom Search for the AI Monitor. Uses Google\'s fresh index instead of the LLM\'s built-in search (which can return stale/filled positions). Free tier: 100 queries/day.', position: 'center', scrollTo: '#set-google-search-key' },
+  { page: 'settings', target: null, title: 'Settings — Live Google Search', text: 'The AI Monitor can use Gemini\'s Google Search grounding for fresh, live results instead of the LLM\'s cached search. If your primary LLM is Gemini, it works automatically. Otherwise, add a Gemini API key from aistudio.google.com. Free and paid tiers both work — paid gives more results and keeps your data private.', position: 'center', scrollTo: '#set-gemini-search-key' },
 
   // Settings — Trusted Senders
   { page: 'settings', target: null, title: 'Settings — Trusted Senders', text: 'Emails from these senders skip the LLM classifier and go straight to listing extraction. Add your job alert sources (Indeed, LinkedIn, Glassdoor, etc.) to speed up Gmail processing.', position: 'center', scrollTo: '#sf-senders-tags' },

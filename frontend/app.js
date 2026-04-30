@@ -3580,34 +3580,65 @@ async function renderSettings(c){
         <div class="scard-icon sci-scan">\u{1F50D}</div>
         <div>
           <div class="scard-title">Live Google Search (AI Monitor)</div>
-          <div class="scard-desc">Uses Gemini's Google Search grounding to get fresh, live job listings instead of the LLM's cached web search (which often returns stale/filled positions). ~$0.01 per company scan.</div>
+          <div class="scard-desc">Uses Gemini's Google Search grounding to get fresh, live job listings instead of the LLM's cached web search (which often returns stale/filled positions).</div>
         </div>
       </div>
       ${s.llm_provider === 'google' && s.has_llm_api_key
-        ? '<div style="background:var(--green-soft);border-radius:var(--radius-sm);padding:10px 12px;font-size:12px;color:var(--green);font-weight:600;margin-bottom:12px">\u{2705} Your primary Gemini key will be used for search — no extra key needed.</div>'
-        : `<details style="margin-bottom:12px;background:var(--bg2);border-radius:var(--radius-sm);padding:10px 14px">
-        <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--primary)">Setup instructions (click to expand)</summary>
+        ? `<div style="background:var(--green-soft);border-radius:var(--radius-sm);padding:12px;font-size:12px;color:var(--green);font-weight:600;margin-bottom:12px">
+            \u{2705} Your primary LLM is Gemini \u{2014} the same key is used for search automatically. No extra setup needed.
+          </div>
+          <div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:8px">
+            <strong>Tip:</strong> You can also paste a separate Gemini key below if you want to use a different project for search (e.g. to track costs separately).
+          </div>
+          <div class="fg">
+            <label class="fl">Override Search Key <span style="font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0">(optional)</span></label>
+            <input class="fi" id="set-gemini-search-key" type="password" placeholder="${s.has_gemini_search_key ? '\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022} (saved \u{2014} overrides primary)' : 'Leave empty to use your primary Gemini key'}" autocomplete="off">
+          </div>`
+        : `<details style="margin-bottom:12px;background:var(--bg2);border-radius:var(--radius-sm);padding:10px 14px" open>
+        <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--primary)">Setup instructions</summary>
         <div style="font-size:12px;line-height:1.7;color:var(--text2);margin-top:8px">
-          <strong>Why a separate key?</strong> Your primary LLM is ${escapeHtml(s.llm_provider || 'not Gemini')}. To use Google's live search index, the AI Monitor needs a Gemini API key.
+          <strong>Why is this needed?</strong> Your primary LLM is <strong>${escapeHtml(s.llm_provider === 'openai' ? 'OpenAI' : s.llm_provider === 'anthropic' ? 'Anthropic' : s.llm_provider || 'not Gemini')}</strong>. To search Google's live index, the AI Monitor needs a Gemini API key. You can get one for free or with billing:
           <ol style="margin:8px 0 10px 18px;padding:0">
             <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary)">aistudio.google.com/apikey</a></li>
-            <li>Click <strong>"Create API key"</strong> \u{2192} select any project</li>
-            <li>Set up billing on the project (required \u{2014} credit card needed, but cost is ~$0.01 per scan)</li>
+            <li>Sign in with your Google account</li>
+            <li>Click <strong>"Create API key"</strong> \u{2192} select or create a project</li>
             <li>Copy the key and paste it below</li>
           </ol>
-          <div style="margin-top:6px;padding:8px 10px;background:var(--primary-soft);border-radius:var(--radius-xs);font-size:11px">
-            <strong>\u{1F512} Privacy:</strong> With a paid-tier key, Google does NOT use your search data to train their models and no human review occurs. Your job search stays private.
+          <div style="margin-top:8px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;font-size:11px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border)">
+              <div style="padding:8px 10px;font-weight:700;background:var(--bg2);border-right:1px solid var(--border)">\u{1F193} Free Tier</div>
+              <div style="padding:8px 10px;font-weight:700;background:var(--bg2)">\u{1F4B3} Paid Tier (recommended)</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr">
+              <div style="padding:8px 10px;border-right:1px solid var(--border);line-height:1.6">
+                \u{2022} No credit card needed<br>
+                \u{2022} ~3 results per query<br>
+                \u{2022} Rate limits during bulk scans<br>
+                \u{2022} Google may review your data for model training
+              </div>
+              <div style="padding:8px 10px;line-height:1.6">
+                \u{2022} Requires billing setup (~$0.01/scan)<br>
+                \u{2022} ~5+ results per query<br>
+                \u{2022} Priority execution, no throttling<br>
+                \u{2022} \u{1F512} Data stays private \u{2014} not used for training
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:8px;color:var(--text3);font-size:11px">
+            <strong>To enable paid tier:</strong> In <a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--primary)">AI Studio</a>, click "Set up billing" next to your key \u{2192} link a credit card. Cost is typically &lt;$1/month for normal usage.
           </div>
         </div>
       </details>
       <div class="fg">
         <label class="fl">Gemini Search API Key</label>
-        <input class="fi" id="set-gemini-search-key" type="password" placeholder="${s.has_gemini_search_key ? '\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022}\\u{2022} (saved)' : 'Paste your Gemini API key'}" autocomplete="off">
+        <input class="fi" id="set-gemini-search-key" type="password" placeholder="${s.has_gemini_search_key ? '\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022} (saved)' : 'Paste your Gemini API key'}" autocomplete="off">
       </div>`
       }
       ${s.has_gemini_search_key
         ? '<div style="font-size:11px;color:var(--success);font-weight:600;margin-top:4px">\u{2705} Live Google Search active \u{2014} AI Monitor will return fresh, verified listings</div>'
-        : (s.llm_provider !== 'google' ? '<div style="font-size:11px;color:var(--text3);font-weight:500;margin-top:4px">\u{26A0}\u{FE0F} Not configured \u{2014} AI Monitor falls back to LLM web search (may return stale results)</div>' : '')
+        : (s.llm_provider === 'google' && s.has_llm_api_key
+          ? '<div style="font-size:11px;color:var(--success);font-weight:600;margin-top:4px">\u{2705} Using your primary Gemini key for search</div>'
+          : '<div style="font-size:11px;color:var(--text3);font-weight:500;margin-top:4px">\u{26A0}\u{FE0F} Not configured \u{2014} AI Monitor falls back to LLM web search (may return stale results)</div>')
       }
     </div>
 

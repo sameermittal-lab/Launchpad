@@ -234,8 +234,9 @@ async def _execute_via_gemini_search(
 
             prompt = (
                 f"Search for: {query_str}\n\n"
-                f"Return ALL job listings you find as a JSON array. Each item must have: "
-                f"title, url, location (or null if not visible).\n"
+                f"IMPORTANT: Return EVERY job listing from the search results — typically 5-10 per search. "
+                f"Do NOT summarize or pick just a few. Include ALL results.\n\n"
+                f"Format: JSON array. Each item must have: title, url, location (or null if not visible).\n"
                 f"Output ONLY the JSON array, no other text or markdown fences."
             )
 

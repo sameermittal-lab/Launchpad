@@ -3632,6 +3632,10 @@ async function renderSettings(c){
       <div class="fg">
         <label class="fl">Gemini Search API Key</label>
         <input class="fi" id="set-gemini-search-key" type="password" placeholder="${s.has_gemini_search_key ? '\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022} (saved)' : 'Paste your Gemini API key'}" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <button class="btn btn-ghost btn-sm" onclick="testGeminiSearchKey()">\u{26A1} Test Connection</button>
+        <span id="geminiSearchTestResult" style="font-size:11px"></span>
       </div>`
       }
       ${s.has_gemini_search_key
@@ -6151,4 +6155,22 @@ async function showCostPopover() {
 function hideCostPopover() {
   const popover = document.getElementById('costPopover');
   if (popover) popover.style.display = 'none';
+}
+
+// Test Gemini Search API key
+async function testGeminiSearchKey() {
+  const resultEl = document.getElementById('geminiSearchTestResult');
+  if (!resultEl) return;
+  const key = document.getElementById('set-gemini-search-key')?.value?.trim() || null;
+  resultEl.innerHTML = '<span style="color:var(--primary)">\u{23F3} Testing...</span>';
+  try {
+    const r = await window.api.settings.testGeminiSearch(key);
+    if (r.success) {
+      resultEl.innerHTML = `<span style="color:var(--green)">\u{2705} ${escapeHtml(r.message)}</span>`;
+    } else {
+      resultEl.innerHTML = `<span style="color:var(--red)">\u{274C} ${escapeHtml(r.message)}</span>`;
+    }
+  } catch (err) {
+    resultEl.innerHTML = `<span style="color:var(--red)">\u{274C} ${escapeHtml(err.message)}</span>`;
+  }
 }

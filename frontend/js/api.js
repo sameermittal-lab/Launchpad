@@ -58,6 +58,10 @@ window.api = {
       method: 'POST',
       body: { provider, api_key, model },
     }),
+    testGeminiSearch: (api_key) => apiRequest('/api/settings/test-gemini-search', {
+      method: 'POST',
+      body: { api_key: api_key || null },
+    }),
   },
 
   listings: {

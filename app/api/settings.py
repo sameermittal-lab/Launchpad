@@ -313,3 +313,57 @@ async def test_llm_connection(
 
     result = await provider.test_connection()
     return result
+
+
+class TestGeminiSearchRequest(BaseModel):
+    api_key: Optional[str] = None  # if empty, uses stored gemini_search_api_key
+
+
+@router.post("/test-gemini-search")
+async def test_gemini_search(
+    data: TestGeminiSearchRequest,
+    profile: Profile = Depends(get_current_profile),
+):
+    """Test Gemini Search connection by running a sample grounded search."""
+    import httpx
+
+    api_key = (data.api_key or "").strip()
+    if not api_key:
+        # Try stored key
+        enc = getattr(profile, "gemini_search_api_key_enc", None)
+        if enc:
+            api_key = decrypt(enc)
+        elif profile.llm_provider == "google" and profile.llm_api_key_enc:
+            api_key = decrypt(profile.llm_api_key_enc)
+    if not api_key:
+        raise HTTPException(status_code=400, detail="No Gemini API key provided")
+
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    body = {
+        "contents": [{"parts": [{"text": "Search for 'software engineer jobs site:google.com/about/careers'. Return the first 2 results as JSON with title and url."}]}],
+        "tools": [{"google_search": {}}],
+        "generationConfig": {"maxOutputTokens": 500, "temperature": 0.1},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, params={"key": api_key}, json=body)
+        if resp.status_code == 200:
+            data_resp = resp.json()
+            text = ""
+            for cand in data_resp.get("candidates", []):
+                for part in cand.get("content", {}).get("parts", []):
+                    if "text" in part:
+                        text += part["text"]
+            return {
+                "success": True,
+                "message": "Gemini Search is working! Google grounding returned results.",
+                "sample": text[:300],
+            }
+        else:
+            err = resp.json().get("error", {})
+            return {
+                "success": False,
+                "message": f"Gemini returned {resp.status_code}: {err.get('message', 'unknown error')[:200]}",
+            }
+    except Exception as exc:
+        return {"success": False, "message": f"Connection failed: {str(exc)[:200]}"}

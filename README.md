@@ -2,6 +2,20 @@
 
 AI-powered job search command center. Run it once on your laptop or home server, browse it from any device on your local network.
 
+## Screenshots
+
+| Dashboard | Pipeline Board |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Pipeline](docs/screenshots/pipeline.png) |
+
+| Portal Scanner | All Listings |
+|---|---|
+| ![Scanner](docs/screenshots/scanner.png) | ![Listings](docs/screenshots/listings.png) |
+
+| Settings | Mobile View |
+|---|---|
+| ![Settings](docs/screenshots/settings.png) | ![Mobile](docs/screenshots/mobile.png) |
+
 ## What it does
 
 - **Discovers** jobs from portals (Greenhouse, Ashby, Lever, **Workday**) and your Gmail inbox (any sender — Indeed, LinkedIn, Glassdoor, Wellfound, etc.)

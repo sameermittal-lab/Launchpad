@@ -60,7 +60,7 @@ Generate a query plan: a list of **3 to 5** web-search queries for surfacing mat
 ## Rules for the queries
 
 1. **USE the verified domain pattern from your web-search step** (not a guess based on the company name). If `site:careers.{company}.com` is poorly indexed, use the host pattern you actually found open roles at.
-2. **Cover the candidate's actual level range.** If the candidate is a Director at a FAANG today, target that level AT this company (which may be "Principal" or "Staff" for smaller companies, or "Senior Director" for larger ones). Use web search to figure out what the equivalent title is at this specific company.
+2. **Cover the candidate's actual level range.** Use web search (levels.fyi, Glassdoor, the company's own career pages) to determine the correct title mapping. Search at the candidate's equivalent level AND above — never below. The LLM must do this research, not guess.
 3. **Cover different domains the candidate has real experience in.** Each query should emphasize a different slice: one for their primary domain, one for an adjacent domain, one for an emerging area matched in their resume.
 4. **Stay BROAD in the keyword space.** Ingestion is intentionally wide — LaunchPad has its own deterministic title/keyword filter that applies afterward, so queries do NOT need to pre-filter aggressively. Prefer over-coverage over under-coverage.
 5. **Avoid duplicating across queries.** Each query should surface a DIFFERENT portion of the inventory.
@@ -71,25 +71,13 @@ Generate a query plan: a list of **3 to 5** web-search queries for surfacing mat
 
 ```json
 {
-  "strategy": "scale-wide",
-  "careers_site": "amazon.jobs",
-  "level_mapping_notes": "At Amazon this candidate's Director-level maps most directly to Principal PM (L7). L8+ is Senior Principal / Director. Include both to cover lateral and small up-level moves.",
+  "strategy": "scale-wide | narrow",
+  "careers_site": "<verified careers domain from your web search>",
+  "level_mapping_notes": "<explain how you mapped the candidate's level to this company's titles, citing your web research>",
   "queries": [
     {
-      "q": "\"Principal Product Manager\" \"AI\" OR \"ML\" site:amazon.jobs",
-      "rationale": "Candidate has deep AI/ML PM experience; Amazon has many Principal PM AI roles across AWS and Alexa."
-    },
-    {
-      "q": "\"Principal Product Manager\" \"developer\" OR \"platform\" site:amazon.jobs",
-      "rationale": "Candidate has shipped developer-facing infrastructure; AWS platform/dev-tools is a strong org match."
-    },
-    {
-      "q": "\"Senior Principal\" OR \"Sr Principal\" site:amazon.jobs",
-      "rationale": "Covers the small up-level opportunity at Amazon's L8 — often a better title at same scope."
-    },
-    {
-      "q": "\"Director of Product\" site:amazon.jobs",
-      "rationale": "Lateral match — pure Director roles at Amazon are rarer for IC-PM function but worth catching."
+      "q": "<search query with site: operator>",
+      "rationale": "<why this query targets the right level and domain>"
     }
   ],
   "estimated_yield": 30

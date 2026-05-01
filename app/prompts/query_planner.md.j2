@@ -60,7 +60,7 @@ Generate a query plan: a list of **3 to 5** web-search queries for surfacing mat
 ## Rules for the queries
 
 1. **USE the verified domain pattern from your web-search step** (not a guess based on the company name). If `site:careers.{company}.com` is poorly indexed, use the host pattern you actually found open roles at.
-2. **Cover the candidate's actual level range.** Use web search (levels.fyi, Glassdoor, the company's own career pages) to determine the correct title mapping. Search at the candidate's equivalent level AND above — never below. The LLM must do this research, not guess.
+2. **Cover the candidate's actual level range.** Use web search (levels.fyi, Glassdoor, the company's own career pages) to determine the correct title mapping. Search at the candidate's equivalent level AND above — never below. If the candidate's current title is "Director", do NOT include titles below Director (e.g., do NOT include "Senior Manager" or "Principal" if those are lower levels at this company). The candidate is looking for lateral or up-level moves, not down-level.
 3. **Cover different domains the candidate has real experience in.** Each query should emphasize a different slice: one for their primary domain, one for an adjacent domain, one for an emerging area matched in their resume.
 4. **Stay BROAD in the keyword space.** Ingestion is intentionally wide — LaunchPad has its own deterministic title/keyword filter that applies afterward, so queries do NOT need to pre-filter aggressively. Prefer over-coverage over under-coverage.
 5. **Avoid duplicating across queries.** Each query should surface a DIFFERENT portion of the inventory.

@@ -162,7 +162,10 @@ async def generate_query_plan(
     db.refresh(company)
 
     logger.info(
-        f"Query plan for {company.name}: {len(cleaned_queries)} queries, "
+        f"Query plan for {company.name}: "
+        f"titles={plan.get('target_titles', [])}, "
+        f"domains={plan.get('domain_areas', [])}, "
+        f"queries={len(plan.get('queries', []))}, "
         f"strategy={plan.get('strategy')}"
     )
     return plan

@@ -223,35 +223,31 @@ async def _execute_via_gemini_search(
     queries = plan.get("queries") or []
     careers_site = plan.get("careers_site", "")
 
-    # Extract the key title terms from all queries
+    # Extract the key TITLE terms (not domain keywords) from queries
     import re as _re
-    all_terms = set()
+    title_terms = set()
     for q in queries:
         q_text = q.get("q") or ""
-        # Extract quoted phrases
+        # Extract quoted phrases that look like job titles
         phrases = _re.findall(r'"([^"]+)"', q_text)
         for p in phrases:
-            # Skip site: values and generic operators
-            if "site:" in p or p in ("OR", "AND"):
+            if p in ("OR", "AND") or "site:" in p:
                 continue
-            all_terms.add(p)
+            # Keep title-level terms, skip domain keywords
+            if any(kw in p.lower() for kw in ["director", "vp", "vice president", "principal", "senior", "staff", "head", "manager", "lead"]):
+                title_terms.add(p)
 
-    if not all_terms:
-        all_terms = {"Director", "Product Management"}
+    if not title_terms:
+        title_terms = {"Director", "Principal", "VP"}
 
-    # Build a single natural-language prompt
-    # Strip "site:" prefix from careers_site if present
-    import re as _re
-    clean_site = _re.sub(r'^site:', '', careers_site).strip() if careers_site else company.name
-    terms_str = ", ".join(sorted(all_terms))
+    # Build a simple, natural prompt — this format is proven to work
+    import re as _re2
+    clean_site = _re2.sub(r'^site:', '', careers_site).strip() if careers_site else company.name
+    titles_str = " and ".join(sorted(title_terms)[:4])  # Keep it short
     prompt = (
-        f"Search {clean_site} for all currently open job positions "
-        f"matching these titles/keywords: {terms_str}.\n\n"
-        f"Return EVERY job listing you find as a JSON array. Each item must have:\n"
-        f"- title: the job title\n"
-        f"- url: the full URL to the job posting\n"
-        f"- location: the job location (or null)\n\n"
-        f"Output ONLY the JSON array, no other text."
+        f"Search {clean_site} for all {titles_str} Product Management jobs currently open.\n"
+        f"Return EVERY result you find as a JSON array with fields: title, url, location.\n"
+        f"Output only the JSON array, no other text."
     )
 
     api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"

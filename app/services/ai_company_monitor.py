@@ -230,6 +230,7 @@ async def _execute_via_gemini_search(
 
     import re as _re
     clean_site = _re.sub(r'^site:', '', careers_site).strip() if careers_site else company.name
+    clean_site = _re.sub(r'^www\.', '', clean_site)  # Strip www. prefix
 
     if target_titles:
         # New format: build prompt from target_titles + domain_areas

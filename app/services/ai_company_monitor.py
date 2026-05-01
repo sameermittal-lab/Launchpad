@@ -232,11 +232,20 @@ async def _execute_via_gemini_search(
             if not query_str:
                 continue
 
+            # Gemini's google_search tool strips site: operators, so we use
+            # a natural-language prompt that tells it WHERE to search
+            careers_site = plan.get("careers_site", "")
+            site_instruction = f"Search the {careers_site} careers website. " if careers_site else ""
+
+            # Strip site: operator from the query since Gemini ignores it
+            import re as _re
+            clean_query = _re.sub(r'\s*site:\S+', '', query_str).strip()
+
             prompt = (
-                f"Search for: {query_str}\n\n"
+                f"{site_instruction}Find job listings matching: {clean_query}\n\n"
                 f"IMPORTANT: Return EVERY job listing from the search results — typically 5-10 per search. "
-                f"Do NOT summarize or pick just a few. Include ALL results.\n\n"
-                f"Format: JSON array. Each item must have: title, url, location (or null if not visible).\n"
+                f"Do NOT summarize or pick just a few. Include ALL results you find.\n\n"
+                f"Format: JSON array. Each item must have: title, url (full URL), location (or null).\n"
                 f"Output ONLY the JSON array, no other text or markdown fences."
             )
 

@@ -223,32 +223,44 @@ async def _execute_via_gemini_search(
     queries = plan.get("queries") or []
     careers_site = plan.get("careers_site", "")
 
-    # Extract the key TITLE terms (not domain keywords) from queries
+    # Use the new simplified plan format if available
+    target_titles = plan.get("target_titles") or []
+    domain_areas = plan.get("domain_areas") or []
+
     import re as _re
-    title_terms = set()
-    for q in queries:
-        q_text = q.get("q") or ""
-        # Extract quoted phrases that look like job titles
-        phrases = _re.findall(r'"([^"]+)"', q_text)
-        for p in phrases:
-            if p in ("OR", "AND") or "site:" in p:
-                continue
-            # Keep title-level terms, skip domain keywords
-            if any(kw in p.lower() for kw in ["director", "vp", "vice president", "principal", "senior", "staff", "head", "manager", "lead"]):
-                title_terms.add(p)
+    clean_site = _re.sub(r'^site:', '', careers_site).strip() if careers_site else company.name
 
-    if not title_terms:
-        title_terms = {"Director", "Principal", "VP"}
-
-    # Build a simple, natural prompt — this format is proven to work
-    import re as _re2
-    clean_site = _re2.sub(r'^site:', '', careers_site).strip() if careers_site else company.name
-    titles_str = " and ".join(sorted(title_terms)[:4])  # Keep it short
-    prompt = (
-        f"Search {clean_site} for all {titles_str} Product Management jobs currently open.\n"
-        f"Return EVERY result you find as a JSON array with fields: title, url, location.\n"
-        f"Output only the JSON array, no other text."
-    )
+    if target_titles:
+        # New format: build prompt from target_titles + domain_areas
+        titles_str = " and ".join(target_titles[:4])
+        domains_str = ", ".join(domain_areas[:4]) if domain_areas else "Product Management"
+        prompt = (
+            f"Search {clean_site} for all {titles_str} jobs in {domains_str} currently open.\n"
+            f"Return EVERY result you find as a JSON array with fields: title, url, location.\n"
+            f"Output only the JSON array, no other text."
+        )
+    elif queries:
+        # Legacy format: extract title terms from queries
+        title_terms = set()
+        for q in queries:
+            q_text = q.get("q") or ""
+            phrases = _re.findall(r'"([^"]+)"', q_text)
+            for p in phrases:
+                if p in ("OR", "AND") or "site:" in p:
+                    continue
+                if any(kw in p.lower() for kw in ["director", "vp", "vice president", "principal", "senior", "staff", "head", "manager", "lead"]):
+                    title_terms.add(p)
+        if not title_terms:
+            title_terms = {"Director", "Principal", "VP"}
+        titles_str = " and ".join(sorted(title_terms)[:4])
+        prompt = (
+            f"Search {clean_site} for all {titles_str} Product Management jobs currently open.\n"
+            f"Return EVERY result you find as a JSON array with fields: title, url, location.\n"
+            f"Output only the JSON array, no other text."
+        )
+    else:
+        logger.warning(f"No target_titles or queries in plan for {company.name}")
+        return []
 
     api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     logger.info(f"Gemini search prompt for {company.name}: {prompt[:200]}")

@@ -121,27 +121,37 @@ async def generate_query_plan(
         logger.exception(f"Query plan JSON parse failed for {company.name}")
         raise ValueError(f"Could not parse query plan for {company.name}")
 
-    # Basic sanity checks — reject plans that aren't actionable
-    queries = plan.get("queries") if isinstance(plan, dict) else None
-    if not isinstance(queries, list) or len(queries) < 1:
-        raise ValueError(f"Query plan for {company.name} has no queries")
+    # Basic sanity checks
+    if not isinstance(plan, dict):
+        raise ValueError(f"Query plan for {company.name} is not a dict")
 
-    cleaned_queries = []
-    for q in queries:
-        if not isinstance(q, dict) or not q.get("q"):
-            continue
-        q_text = str(q["q"]).strip()
-        if "site:" not in q_text.lower():
-            # Drop queries missing site: — they'd blow up the search scope
-            logger.warning(f"Dropping query without site: operator: {q_text}")
-            continue
-        cleaned_queries.append({
-            "q": q_text,
-            "rationale": str(q.get("rationale") or "").strip(),
-        })
+    # New format: target_titles + domain_areas (no queries needed)
+    target_titles = plan.get("target_titles")
+    domain_areas = plan.get("domain_areas")
 
-    if not cleaned_queries:
-        raise ValueError(f"Query plan for {company.name} had no valid queries after cleaning")
+    if isinstance(target_titles, list) and target_titles:
+        # New simplified format — no queries needed
+        plan.setdefault("queries", [])
+    else:
+        # Legacy format with queries — validate them
+        queries = plan.get("queries")
+        if not isinstance(queries, list) or len(queries) < 1:
+            raise ValueError(f"Query plan for {company.name} has no queries or target_titles")
+
+        cleaned_queries = []
+        for q in queries:
+            if not isinstance(q, dict) or not q.get("q"):
+                continue
+            q_text = str(q["q"]).strip()
+            cleaned_queries.append({
+                "q": q_text,
+                "rationale": str(q.get("rationale") or "").strip(),
+            })
+
+        if not cleaned_queries:
+            raise ValueError(f"Query plan for {company.name} had no valid queries after cleaning")
+
+        plan["queries"] = cleaned_queries[:5]
 
     # Cap at 5 queries as promised to user
     cleaned_queries = cleaned_queries[:5]

@@ -1595,6 +1595,18 @@ async function renderAiMonitorBody(companyId){
           </div>
         </div>
         ${hasPlan ? `
+          ${(plan.target_titles && plan.target_titles.length) ? `
+            <div style="margin-bottom:10px;padding:10px 12px;background:var(--primary-soft);border-radius:var(--radius-sm)">
+              <div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Target Titles</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">${plan.target_titles.map(t => `<span style="font-size:12px;font-weight:600;padding:3px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px">${escapeHtml(t)}</span>`).join('')}</div>
+            </div>
+          ` : ''}
+          ${(plan.domain_areas && plan.domain_areas.length) ? `
+            <div style="margin-bottom:10px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius-sm)">
+              <div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Domain Areas</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">${plan.domain_areas.map(d => `<span style="font-size:12px;font-weight:500;padding:3px 10px;background:var(--surface);border:1px solid var(--border);border-radius:6px">${escapeHtml(d)}</span>`).join('')}</div>
+            </div>
+          ` : ''}
           <div id="aiPlanRows" style="display:flex;flex-direction:column;gap:8px">
             ${plan.queries.map((q, i) => aiPlanRowHTML(q, i, companyId)).join('')}
           </div>

@@ -172,7 +172,8 @@ async def _execute_query_plan(
     2. Primary LLM's built-in web search + liveness HEAD check
     """
     queries = plan.get("queries") or []
-    if not queries:
+    target_titles = plan.get("target_titles") or []
+    if not queries and not target_titles:
         return []
 
     # Determine if we can use Gemini grounded search

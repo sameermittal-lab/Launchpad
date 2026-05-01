@@ -214,114 +214,100 @@ async def _execute_via_gemini_search(
 ) -> list[SearchHit]:
     """Gemini grounded search pipeline.
 
-    Uses Gemini's native google_search tool to get fresh results from Google's
-    live index. Each query in the plan becomes a separate Gemini call with
-    grounding enabled. Results are parsed into SearchHits.
+    Instead of sending each query individually (which fails because Gemini
+    strips site: operators and struggles with complex boolean queries), we
+    combine all queries into a single natural-language search request.
     """
     import httpx
 
     queries = plan.get("queries") or []
-    all_hits: list[SearchHit] = []
-    seen_keys: set[str] = set()
+    careers_site = plan.get("careers_site", "")
+
+    # Extract the key title terms from all queries
+    import re as _re
+    all_terms = set()
+    for q in queries:
+        q_text = q.get("q") or ""
+        # Extract quoted phrases
+        phrases = _re.findall(r'"([^"]+)"', q_text)
+        for p in phrases:
+            # Skip site: values and generic operators
+            if "site:" in p or p in ("OR", "AND"):
+                continue
+            all_terms.add(p)
+
+    if not all_terms:
+        all_terms = {"Director", "Product Management"}
+
+    # Build a single natural-language prompt
+    terms_str = ", ".join(sorted(all_terms))
+    prompt = (
+        f"Search {careers_site or company.name + ' careers'} for all currently open job positions "
+        f"matching these titles/keywords: {terms_str}.\n\n"
+        f"Return EVERY job listing you find as a JSON array. Each item must have:\n"
+        f"- title: the job title\n"
+        f"- url: the full URL to the job posting\n"
+        f"- location: the job location (or null)\n\n"
+        f"Output ONLY the JSON array, no other text."
+    )
 
     api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "tools": [{"google_search": {}}],
+        "generationConfig": {"maxOutputTokens": 4000, "temperature": 0.1},
+    }
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        for q in queries:
-            query_str = q.get("q") or ""
-            if not query_str:
-                continue
+        try:
+            resp = await client.post(api_url, params={"key": gemini_key}, json=body)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            logger.warning(f"Gemini search failed for {company.name}: {exc}")
+            return []
 
-            # Gemini's google_search tool strips site: operators, so we use
-            # a natural-language prompt that tells it WHERE to search
-            careers_site = plan.get("careers_site", "")
-            site_instruction = f"Search the {careers_site} careers website. " if careers_site else ""
+    # Extract text
+    text = ""
+    for cand in data.get("candidates", []):
+        for part in cand.get("content", {}).get("parts", []):
+            if "text" in part:
+                text += part["text"]
 
-            # Strip site: operator from the query since Gemini ignores it
-            import re as _re
-            clean_query = _re.sub(r'\s*site:\S+', '', query_str).strip()
+    if not text.strip():
+        logger.warning(f"Gemini search returned empty text for {company.name}")
+        return []
 
-            prompt = (
-                f"{site_instruction}Find job listings matching: {clean_query}\n\n"
-                f"IMPORTANT: Return EVERY job listing from the search results — typically 5-10 per search. "
-                f"Do NOT summarize or pick just a few. Include ALL results you find.\n\n"
-                f"Format: JSON array. Each item must have: title, url (full URL), location (or null).\n"
-                f"Output ONLY the JSON array, no other text or markdown fences."
-            )
-
-            body = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "tools": [{"google_search": {}}],
-                "generationConfig": {"maxOutputTokens": 4000, "temperature": 0.1},
-            }
-
+    # Parse JSON
+    try:
+        parsed = _extract_json(text)
+    except Exception:
+        import re as _re2
+        json_match = _re2.search(r'\[[\s\S]*\]', text)
+        if json_match:
             try:
-                resp = await client.post(api_url, params={"key": gemini_key}, json=body)
-                resp.raise_for_status()
-                data = resp.json()
-            except Exception as exc:
-                logger.warning(f"Gemini search failed for query '{query_str}': {exc}")
-                continue
-
-            # Extract text from response
-            text = ""
-            for cand in data.get("candidates", []):
-                for part in cand.get("content", {}).get("parts", []):
-                    if "text" in part:
-                        text += part["text"]
-
-            if not text.strip():
-                continue
-
-            # Parse JSON from the response
-            try:
-                parsed = _extract_json(text)
+                import json as _json
+                parsed = _json.loads(json_match.group())
             except Exception:
-                # Try harder — sometimes Gemini wraps in markdown fences
-                import re as _re2
-                json_match = _re2.search(r'\[[\s\S]*\]', text)
-                if json_match:
-                    try:
-                        import json as _json
-                        parsed = _json.loads(json_match.group())
-                    except Exception:
-                        logger.warning(f"Gemini search JSON parse failed for '{clean_query[:60]}'")
-                        continue
-                else:
-                    logger.warning(f"Gemini search returned no JSON for '{clean_query[:60]}'")
-                    continue
+                logger.warning(f"Gemini search JSON parse failed for {company.name}")
+                return []
+        else:
+            logger.warning(f"Gemini search returned no JSON for {company.name}")
+            return []
 
-            items = parsed if isinstance(parsed, list) else (parsed.get("listings") or parsed.get("items") or []) if isinstance(parsed, dict) else []
+    items = parsed if isinstance(parsed, list) else (parsed.get("listings") or parsed.get("items") or []) if isinstance(parsed, dict) else []
 
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                url = (item.get("url") or "").strip()
-                title = (item.get("title") or "").strip()
-                if not url or not title:
-                    continue
-                url = normalize_listing_url(url)
-                key = canonical_url_key(url)
-                if not key or key in seen_keys:
-                    continue
-                seen_keys.add(key)
-                all_hits.append(SearchHit(
-                    company=company.name,
-                    role_title=title,
-                    url=url,
-                    location=item.get("location") or None,
-                    source_query=query_str,
-                ))
+    hits = _parse_hits(items, company)
 
-            # Track usage
-            log_usage(db, profile.id, "ai_monitor_gemini_search", type("R", (), {
-                "text": text, "provider": "google", "model": "gemini-2.5-flash",
-                "input_tokens": 0, "output_tokens": 0, "prompt_tokens": 0,
-                "completion_tokens": 0, "cost_usd": 0.01,
-            })())
+    # Track usage
+    log_usage(db, profile.id, "ai_monitor_gemini_search", type("R", (), {
+        "text": text, "provider": "google", "model": "gemini-2.5-flash",
+        "input_tokens": 0, "output_tokens": 0, "prompt_tokens": 0,
+        "completion_tokens": 0, "cost_usd": 0.01,
+    })())
 
-    logger.info(f"Gemini grounded search for {company.name}: {len(all_hits)} hits from {len(queries)} queries")
-    return all_hits
+    logger.info(f"Gemini grounded search for {company.name}: {len(hits)} hits")
+    return hits
     from app.services.google_search import google_search_multi
 
     queries = plan.get("queries") or []

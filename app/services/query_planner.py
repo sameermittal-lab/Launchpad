@@ -153,10 +153,6 @@ async def generate_query_plan(
 
         plan["queries"] = cleaned_queries[:5]
 
-    # Cap at 5 queries as promised to user
-    cleaned_queries = cleaned_queries[:5]
-
-    plan["queries"] = cleaned_queries
     plan.setdefault("strategy", "scale-wide")
     plan.setdefault("careers_site", "")
 

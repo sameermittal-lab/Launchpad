@@ -277,8 +277,19 @@ async def _execute_via_gemini_search(
             try:
                 parsed = _extract_json(text)
             except Exception:
-                logger.warning(f"Gemini search JSON parse failed for '{query_str}'")
-                continue
+                # Try harder — sometimes Gemini wraps in markdown fences
+                import re as _re2
+                json_match = _re2.search(r'\[[\s\S]*\]', text)
+                if json_match:
+                    try:
+                        import json as _json
+                        parsed = _json.loads(json_match.group())
+                    except Exception:
+                        logger.warning(f"Gemini search JSON parse failed for '{clean_query[:60]}'")
+                        continue
+                else:
+                    logger.warning(f"Gemini search returned no JSON for '{clean_query[:60]}'")
+                    continue
 
             items = parsed if isinstance(parsed, list) else (parsed.get("listings") or parsed.get("items") or []) if isinstance(parsed, dict) else []
 
@@ -303,7 +314,11 @@ async def _execute_via_gemini_search(
                 ))
 
             # Track usage
-            log_usage(db, profile.id, "ai_monitor_gemini_search", type("R", (), {"text": text, "input_tokens": 0, "output_tokens": 0, "model": "gemini-2.5-flash"})())
+            log_usage(db, profile.id, "ai_monitor_gemini_search", type("R", (), {
+                "text": text, "provider": "google", "model": "gemini-2.5-flash",
+                "input_tokens": 0, "output_tokens": 0, "prompt_tokens": 0,
+                "completion_tokens": 0, "cost_usd": 0.01,
+            })())
 
     logger.info(f"Gemini grounded search for {company.name}: {len(all_hits)} hits from {len(queries)} queries")
     return all_hits

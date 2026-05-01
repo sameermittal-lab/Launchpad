@@ -264,6 +264,7 @@ async def _execute_via_gemini_search(
         return []
 
     api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    api_url_fallback = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent"
     logger.info(f"Gemini search prompt for {company.name}: {prompt[:200]}")
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
@@ -274,6 +275,10 @@ async def _execute_via_gemini_search(
     async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             resp = await client.post(api_url, params={"key": gemini_key}, json=body)
+            # Fall back to flash-lite if flash is overloaded
+            if resp.status_code == 503:
+                logger.warning(f"Gemini 2.5 Flash overloaded (503), falling back to Flash Lite")
+                resp = await client.post(api_url_fallback, params={"key": gemini_key}, json=body)
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:

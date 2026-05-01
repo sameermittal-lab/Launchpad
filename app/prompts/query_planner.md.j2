@@ -21,6 +21,7 @@ Keep searches tight (2-3 total) — enough to validate the domain and the level 
 
 Name: {{ profile.name }}
 Current role / level: {{ profile.role_title | default("(not specified)") }}
+Seniority: This candidate is at the **{{ profile.role_title.split(',')[0].strip() if profile.role_title else 'unknown' }}** level. When generating queries, search at this level and above ONLY. Do NOT include titles that are below this level at the target company.
 Target roles: {{ target_roles }}
 Target locations: {{ target_locations }}
 Target keywords (positive): {{ positive_keywords | join(", ") if positive_keywords else "(none)" }}

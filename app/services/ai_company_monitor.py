@@ -240,9 +240,12 @@ async def _execute_via_gemini_search(
         all_terms = {"Director", "Product Management"}
 
     # Build a single natural-language prompt
+    # Strip "site:" prefix from careers_site if present
+    import re as _re
+    clean_site = _re.sub(r'^site:', '', careers_site).strip() if careers_site else company.name
     terms_str = ", ".join(sorted(all_terms))
     prompt = (
-        f"Search {careers_site or company.name + ' careers'} for all currently open job positions "
+        f"Search {clean_site} for all currently open job positions "
         f"matching these titles/keywords: {terms_str}.\n\n"
         f"Return EVERY job listing you find as a JSON array. Each item must have:\n"
         f"- title: the job title\n"
@@ -252,6 +255,7 @@ async def _execute_via_gemini_search(
     )
 
     api_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    logger.info(f"Gemini search prompt for {company.name}: {prompt[:200]}")
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
         "tools": [{"google_search": {}}],
@@ -278,6 +282,8 @@ async def _execute_via_gemini_search(
         logger.warning(f"Gemini search returned empty text for {company.name}")
         return []
 
+    logger.info(f"Gemini search raw response for {company.name} ({len(text)} chars): {text[:200]}")
+
     # Parse JSON
     try:
         parsed = _extract_json(text)
@@ -292,7 +298,7 @@ async def _execute_via_gemini_search(
                 logger.warning(f"Gemini search JSON parse failed for {company.name}")
                 return []
         else:
-            logger.warning(f"Gemini search returned no JSON for {company.name}")
+            logger.warning(f"Gemini search returned no JSON for {company.name}. Response text: {text[:500]}")
             return []
 
     items = parsed if isinstance(parsed, list) else (parsed.get("listings") or parsed.get("items") or []) if isinstance(parsed, dict) else []
